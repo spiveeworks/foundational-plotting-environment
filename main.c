@@ -339,8 +339,14 @@ int main(int argc, char **argv) {
         char *data = back_buf->data + back_buf->xoffset;
         int stride = back_buf->bytes_per_line;
 
-        long z = t % 512;
-        if (z >= 256) z = 512 - z;
+        long z = t % 1024;
+        for (int key_point = 64; key_point < 1024; key_point += 64) {
+            if (z > key_point) {
+                z -= 64;
+                if (z < key_point) z = key_point;
+            }
+        }
+        if (z > 256) z = 512 - z;
 
         for (int j = 0; j < height; j++) {
             long y = j - height / 2;
