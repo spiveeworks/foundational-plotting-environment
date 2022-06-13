@@ -13,10 +13,6 @@
 #include <sys/shm.h>
 #include <X11/extensions/XShm.h>
 
-#define STBI_NO_SIMD
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
@@ -210,8 +206,8 @@ int main(int argc, char **argv) {
     }
 
     XSetStandardProperties(dis, win,
-        "Foundational Plotting Envrionment",
-        "Foundational Plotting Environment",
+        "Colour Rhombohedron",
+        "Colour Rhombohedron",
         None, NULL, 0, NULL);
 
     long mask = StructureNotifyMask | ButtonPressMask | ButtonReleaseMask
@@ -239,7 +235,7 @@ int main(int argc, char **argv) {
     bool waiting_for_shm_completion = false;
     const int SHM_COMPLETION = XShmGetEventBase (dis) + ShmCompletion;
 
-    bool redraw = false;
+    long t = 0;
 
     while (true) {
         XEvent event;
@@ -247,7 +243,6 @@ int main(int argc, char **argv) {
 
         if (event.type == ConfigureNotify) {
             back_buf_resize = true;
-            redraw = true;
         } else if (event.type == SHM_COMPLETION) {
             waiting_for_shm_completion = false;
         } else if (event.type == KeyPress) {
@@ -280,7 +275,6 @@ int main(int argc, char **argv) {
         if (!back_buf && !back_buf_resize) continue;
         if (waiting_for_shm_completion) continue;
         if (XEventsQueued(dis, QueuedAlready) > 0) continue;
-        if (!redraw) continue;
 
         if (!back_buf || back_buf_resize) {
             if (back_buf) {
@@ -341,46 +335,35 @@ int main(int argc, char **argv) {
         int width = back_buf->width;
         int height = back_buf->height;
 
-        fill_rectangle(back_buf, 0, 0, width, height, (RGBA){0, 0, 0});
-
         long y[width];
-        for (int i = 0; i < width; i++) {
-            long x = i - width / 2;
-            x *= 1024;
-            x /= 30;
-            y[i] = x * x / 1024;
-        }
-        int j1 = height / 2 - y[0] / 1024;
-        int j2 = height / 2 - y[1] / 1024;
         char *data = back_buf->data + back_buf->xoffset;
         int stride = back_buf->bytes_per_line;
-        for (int i = 1; i < width - 10; i++) {
-            int j0 = j1;
-            j1 = j2;
-            j2 = height / 2 - y[i + 1] / 1024;
 
-            int min = (j0 + j1) / 2;
-            int max = (j1 + j2) / 2;
-            if (min > max) {
-                min = (j1 + j2) / 2;
-                max = (j0 + j1) / 2;
-            }
-            min--;
-            max++;
-            if (min < 0) min = 0;
-            if (max >= height) max = height - 1;
+        long z = t % 512;
+        if (z >= 256) z = 512 - z;
 
-            for (int j = min; j <= max; j++) {
-                unsigned *target_row = (unsigned*)&data[stride * j];
-                target_row[i] = 0xFFFFFF;
+        for (int j = 0; j < height; j++) {
+            long y = j - height / 2;
+            unsigned *row = (unsigned*)&data[stride * j];
+            for (int i = 0; i < width; i++) {
+                long x = i - width / 2;
+                long r = z + x;
+                long g = z - y * 221 / 256 - x / 2;
+                long b = z + y * 221 / 256 - x / 2;
+                if (r < 0 || r >= 256 || g < 0 || g >= 256 || b < 0 || b > 256) {
+                    row[i] = 0;
+                } else {
+                    row[i] = r << 16 | g << 8 | b;
+                }
             }
         }
 
         XShmPutImage (dis, win, gc, back_buf, 0, 0, 0, 0, window_width, window_height, true);
         waiting_for_shm_completion = true;
-        redraw = false;
 
         XFlush(dis);
+
+        t += 1;
     }
 }
 
