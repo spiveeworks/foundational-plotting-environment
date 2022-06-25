@@ -192,6 +192,23 @@ void fill_rectangle(XImage *out, int left, int top, int right, int bottom, RGBA 
     }
 }
 
+int window_width = 600;
+int window_height = 600;
+
+long centre_x;
+long centre_y;
+
+int zoom = 1024;
+
+void screen_to_plane(int i, int j, long *x_out, long *y_out) {
+    if (x_out) *x_out = centre_x + zoom * (i - window_width / 2);
+    if (y_out) *y_out = centre_y - zoom * (j - window_height / 2);
+}
+
+void plane_to_screen(long x, long y, int *i_out, int *j_out) {
+    if (i_out) *i_out = window_width / 2 + (x - centre_x) / zoom;
+    if (j_out) *j_out = window_height / 2 - (y - centre_y) / zoom;
+}
 
 int main(int argc, char **argv) {
     bool key_down[256] = {};
@@ -224,22 +241,25 @@ int main(int argc, char **argv) {
     XClearWindow(dis, win);
     XMapRaised(dis, win);
 
-    int window_width = 600;
-    int window_height = 600;
-
     bool back_buf_resize = false;
     XImage *back_buf = NULL;
     XImage *unscaled_buf = NULL;
     XShmSegmentInfo shm_info;
 
     /* We could ask X for the initial mouse position. */
-    int mouse_x = 0;
-    int mouse_y = 0;
+    int mouse_i = 0;
+    int mouse_j = 0;
+    long mouse_x = 0;
+    long mouse_y = 0;
 
     bool waiting_for_shm_completion = false;
     const int SHM_COMPLETION = XShmGetEventBase (dis) + ShmCompletion;
 
     bool redraw = false;
+
+    bool panning = false;
+    long pan_x;
+    long pan_y;
 
     while (true) {
         XEvent event;
@@ -261,16 +281,48 @@ int main(int argc, char **argv) {
             /* Do nothing. */
         } else if (event.type == ButtonPress) {
             int button = event.xbutton.button;
-            if (button == 2) {
-                /* panning = true; */
+            if (button == 1) {
+                panning = true;
+
+                mouse_i = event.xbutton.x;
+                mouse_j = event.xbutton.y;
+                screen_to_plane(mouse_i, mouse_j, &mouse_x, &mouse_y);
+            } else if (button == 4) {
+                zoom = zoom * 4 / 5;
+
+                long new_mouse_x, new_mouse_y;
+                screen_to_plane(mouse_i, mouse_j, &new_mouse_x, &new_mouse_y);
+                centre_x -= new_mouse_x - mouse_x;
+                centre_y -= new_mouse_y - mouse_y;
+
+                redraw = true;
+            } else if (button == 5) {
+                zoom = zoom * 5 / 4;
+
+                long new_mouse_x, new_mouse_y;
+                screen_to_plane(mouse_i, mouse_j, &new_mouse_x, &new_mouse_y);
+                centre_x -= new_mouse_x - mouse_x;
+                centre_y -= new_mouse_y - mouse_y;
+
+                redraw = true;
             }
         } else if (event.type == ButtonRelease) {
-            if (event.xbutton.button == 2) {
-                /* panning = false; */
+            int button = event.xbutton.button;
+            if (button == 1) {
+                panning = false;
             }
         } else if (event.type == MotionNotify) {
-            mouse_x = event.xmotion.x;
-            mouse_y = event.xmotion.y;
+            mouse_i = event.xmotion.x;
+            mouse_j = event.xmotion.y;
+            if (panning) {
+                long new_mouse_x, new_mouse_y;
+                screen_to_plane(mouse_i, mouse_j, &new_mouse_x, &new_mouse_y);
+                centre_x -= new_mouse_x - mouse_x;
+                centre_y -= new_mouse_y - mouse_y;
+                redraw = true;
+            } else {
+                screen_to_plane(mouse_i, mouse_j, &mouse_x, &mouse_y);
+            }
         } else if (event.type == FocusOut) {
             for (int i = 0; i < 256; i++) key_down[i] = false;
         } else if (event.type == DestroyNotify) {
@@ -338,26 +390,21 @@ int main(int argc, char **argv) {
             back_buf_resize = false;
         }
 
-        int width = back_buf->width;
-        int height = back_buf->height;
+        fill_rectangle(back_buf, 0, 0, window_width, window_height, (RGBA){0, 0, 0});
 
-        fill_rectangle(back_buf, 0, 0, width, height, (RGBA){0, 0, 0});
-
-        long y[width];
-        for (int i = 0; i < width; i++) {
-            long x = i - width / 2;
-            x *= 1024;
-            x /= 30;
-            y[i] = x * x / 1024;
+        long y[window_width];
+        for (int i = 0; i < window_width; i++) {
+            long x = centre_x + zoom * (i - window_width / 2);
+            y[i] = x * x / 1024 / 900;
         }
-        int j1 = height / 2 - y[0] / 1024;
-        int j2 = height / 2 - y[1] / 1024;
+        int j1 = window_height / 2 - (y[0] - centre_y) / zoom;
+        int j2 = window_height / 2 - (y[1] - centre_y) / zoom;
         char *data = back_buf->data + back_buf->xoffset;
         int stride = back_buf->bytes_per_line;
-        for (int i = 1; i < width - 10; i++) {
+        for (int i = 1; i < window_width - 10; i++) {
             int j0 = j1;
             j1 = j2;
-            j2 = height / 2 - y[i + 1] / 1024;
+            j2 = window_height / 2 - (y[i + 1] - centre_y) / zoom;
 
             int min = (j0 + j1) / 2;
             int max = (j1 + j2) / 2;
@@ -368,7 +415,7 @@ int main(int argc, char **argv) {
             min--;
             max++;
             if (min < 0) min = 0;
-            if (max >= height) max = height - 1;
+            if (max >= window_height) max = window_height - 1;
 
             for (int j = min; j <= max; j++) {
                 unsigned *target_row = (unsigned*)&data[stride * j];
