@@ -58,6 +58,44 @@ void draw_vertical_line(XImage *out, long x) {
     }
 }
 
+struct polynomial {
+    long *coefficients;
+    long denominator;
+    int order;
+};
+
+#define POLY_ORDER 3
+long poly_coefficients[POLY_ORDER + 1] = {0, -500000000, 0, 10000};
+struct polynomial poly = {poly_coefficients, 10000, POLY_ORDER};
+
+long eval_polynomial(struct polynomial p, long x) {
+    if (p.order == 0) return p.coefficients[0] / p.denominator;
+    /* else */
+
+    long result = p.coefficients[p.order];
+    for (int i = p.order - 1; i >= 0; i--) {
+        result *= x;
+        result += p.coefficients[i];
+        result /= p.denominator;
+    }
+    return result;
+}
+
+long bisect_polynomial(struct polynomial p, long y, long below, long above) {
+    if (eval_polynomial(p, below) > eval_polynomial(p, above)) {
+        long tmp = above;
+        above = below;
+        below = tmp;
+    }
+    while (above > below + 1 || above < below - 1) {
+        long x = (below + above) / 2;
+        long px = eval_polynomial(p, x);
+        if (px < y) below = x;
+        else above = x;
+    }
+    return below;
+}
+
 int main(int argc, char **argv) {
     bool benchmark = false;
 
@@ -262,22 +300,15 @@ int main(int argc, char **argv) {
         draw_horizontal_line(back_buf, 20000);
 
         /* sqrt(2) bisections */
-        int bisection_count = 15;
-        long left = 0;
-        long right = 20000;
-        for (int iteration = 0; iteration < bisection_count; iteration++) {
-            long x = (left + right) / 2;
-            if (x * x / 10000 < 20000) left = x;
-            else right = x;
-        }
-        draw_vertical_line(back_buf, left);
-        draw_vertical_line(back_buf, right);
+        draw_vertical_line(back_buf, bisect_polynomial(poly, 20000, -20000, -10000));
+        draw_vertical_line(back_buf, bisect_polynomial(poly, 20000, -20000, 0));
+        draw_vertical_line(back_buf, bisect_polynomial(poly, 20000, 0, 50000));
 
         /* Parabola point cloud */
         long y[window_width];
         for (int i = 0; i < window_width; i++) {
             long x = centre_x + zoom * (i - window_width / 2);
-            y[i] = x * x / 10000;
+            y[i] = eval_polynomial(poly, x);
         }
         for (int i = 1; i < window_width - 1; i++) {
             int j = window_height / 2 - (y[i] - centre_y) / zoom;
