@@ -63,7 +63,7 @@ void init_text(void) {
 
     error = FT_New_Face(
         library,
-        "data/DejaVuSans.ttf",
+        "DejaVuSans.ttf",
          0,
          &face
     );
@@ -195,10 +195,10 @@ void fill_rectangle(XImage *out, int left, int top, int right, int bottom, RGBA 
 int window_width = 600;
 int window_height = 600;
 
-long centre_x;
-long centre_y;
+long centre_x = 14142 / 2;
+long centre_y = 10000;
 
-int zoom = 1024;
+long zoom = 64;
 
 void screen_to_plane(int i, int j, long *x_out, long *y_out) {
     if (x_out) *x_out = centre_x + zoom * (i - window_width / 2);
@@ -210,7 +210,45 @@ void plane_to_screen(long x, long y, int *i_out, int *j_out) {
     if (j_out) *j_out = window_height / 2 - (y - centre_y) / zoom;
 }
 
+void draw_horizontal_line(XImage *out, long y) {
+    char *data = out->data + out->xoffset;
+    int stride = out->bytes_per_line;
+
+    int j = window_height / 2 - (y - centre_y) / zoom;
+    if (j >= 0 && j < window_height) {
+        unsigned *target_row = (unsigned*)&data[j * stride];
+        for (int i = 0; i < window_width; i++) target_row[i] = 0x888888;
+    }
+}
+
+void draw_vertical_line(XImage *out, long x) {
+    char *data = out->data + out->xoffset;
+    int stride = out->bytes_per_line;
+
+    int i = window_width / 2 + (x - centre_x) / zoom;
+    if (i >= 0 && i < window_width) {
+        for (int j = 0; j < window_height; j++) {
+            unsigned *row = (unsigned*)data;
+            row[i] = 0x888888;
+            data += stride;
+        }
+    }
+}
+
 int main(int argc, char **argv) {
+    bool benchmark = false;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-benchmark") == 0) {
+            if (benchmark) fprintf(stderr, "Warning: \"-bench\" option appeared more than once.\n");
+            benchmark = true;
+        } else {
+            fprintf(stderr, "Warning: \"%s\" is not a known command line argument.\n", argv[i]);
+        }
+    }
+
+    init_text();
+
     bool key_down[256] = {};
 
     {
@@ -289,6 +327,7 @@ int main(int argc, char **argv) {
                 screen_to_plane(mouse_i, mouse_j, &mouse_x, &mouse_y);
             } else if (button == 4) {
                 zoom = zoom * 4 / 5;
+                if (zoom == 0) zoom = 1;
 
                 long new_mouse_x, new_mouse_y;
                 screen_to_plane(mouse_i, mouse_j, &new_mouse_x, &new_mouse_y);
@@ -298,6 +337,7 @@ int main(int argc, char **argv) {
                 redraw = true;
             } else if (button == 5) {
                 zoom = zoom * 5 / 4;
+                if (zoom < 5) zoom += 1;
 
                 long new_mouse_x, new_mouse_y;
                 screen_to_plane(mouse_i, mouse_j, &new_mouse_x, &new_mouse_y);
@@ -390,39 +430,70 @@ int main(int argc, char **argv) {
             back_buf_resize = false;
         }
 
+        struct timespec start;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+
+        /* Black background */
         fill_rectangle(back_buf, 0, 0, window_width, window_height, (RGBA){0, 0, 0});
 
+        char *data = back_buf->data + back_buf->xoffset;
+        int stride = back_buf->bytes_per_line;
+
+        /* y = 2 line */
+        draw_horizontal_line(back_buf, 20000);
+
+        /* sqrt(2) bisections */
+        int bisection_count = 15;
+        long left = 0;
+        long right = 20000;
+        for (int iteration = 0; iteration < bisection_count; iteration++) {
+            long x = (left + right) / 2;
+            if (x * x / 10000 < 20000) left = x;
+            else right = x;
+        }
+        draw_vertical_line(back_buf, left);
+        draw_vertical_line(back_buf, right);
+
+        /* Parabola point cloud */
         long y[window_width];
         for (int i = 0; i < window_width; i++) {
             long x = centre_x + zoom * (i - window_width / 2);
-            y[i] = x * x / 1024 / 900;
+            y[i] = x * x / 10000;
         }
-        int j1 = window_height / 2 - (y[0] - centre_y) / zoom;
-        int j2 = window_height / 2 - (y[1] - centre_y) / zoom;
-        char *data = back_buf->data + back_buf->xoffset;
-        int stride = back_buf->bytes_per_line;
-        for (int i = 1; i < window_width - 10; i++) {
-            int j0 = j1;
-            j1 = j2;
-            j2 = window_height / 2 - (y[i + 1] - centre_y) / zoom;
+        for (int i = 1; i < window_width - 1; i++) {
+            int j = window_height / 2 - (y[i] - centre_y) / zoom;
 
-            int min = (j0 + j1) / 2;
-            int max = (j1 + j2) / 2;
-            if (min > max) {
-                min = (j1 + j2) / 2;
-                max = (j0 + j1) / 2;
-            }
-            min--;
-            max++;
-            if (min < 0) min = 0;
-            if (max >= window_height) max = window_height - 1;
+            if (j < 1) continue;
+            if (j >= window_height - 1) continue;
 
-            for (int j = min; j <= max; j++) {
-                unsigned *target_row = (unsigned*)&data[stride * j];
-                target_row[i] = 0xFFFFFF;
-            }
+            unsigned *target_row = (unsigned*)&data[stride * (j-1)];
+            target_row[i] = 0xFFFFFF;
+            target_row += window_width;
+            target_row[i-1] = 0xFFFFFF;
+            target_row[i] = 0xFFFFFF;
+            target_row[i+1] = 0xFFFFFF;
+            target_row += window_width;
+            target_row[i] = 0xFFFFFF;
         }
 
+        /* Coordinates */
+        static char text_data[25];
+
+        int len = snprintf(text_data, 100, "%ld", centre_x);
+        draw_string(back_buf, 5, window_height / 2, (str){text_data, len});
+
+        len = snprintf(text_data, 100, "%ld", centre_y);
+        draw_string(back_buf, window_width / 2, 15, (str){text_data, len});
+
+        /* Benchmark */
+        struct timespec end;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+
+        unsigned long elapsed = (end.tv_sec - start.tv_sec) * 1000000000
+            + (end.tv_nsec - start.tv_nsec);
+        if (benchmark) printf("Drawing took %dms.\n", elapsed / 1000000);
+
+        /* Flush */
         XShmPutImage (dis, win, gc, back_buf, 0, 0, 0, 0, window_width, window_height, true);
         waiting_for_shm_completion = true;
         redraw = false;
