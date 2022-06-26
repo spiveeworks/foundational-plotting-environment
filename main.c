@@ -58,7 +58,7 @@ void draw_vertical_line(XImage *out, long x) {
     }
 }
 
-void draw_points(XImage *out, int count, long *xs, long *ys) {
+void draw_points(XImage *out, long colour, int count, long *xs, long *ys) {
     char *data = out->data + out->xoffset;
     int stride = out->bytes_per_line;
 
@@ -72,13 +72,13 @@ void draw_points(XImage *out, int count, long *xs, long *ys) {
         if (j >= out->height - 1) continue;
 
         unsigned *target_row = (unsigned*)&data[stride * (j-1)];
-        target_row[i] = 0xFFFFFF;
+        target_row[i] = colour;
         target_row = (unsigned*)((char*)target_row + stride);
-        target_row[i-1] = 0xFFFFFF;
-        target_row[i] = 0xFFFFFF;
-        target_row[i+1] = 0xFFFFFF;
+        target_row[i-1] = colour;
+        target_row[i] = colour;
+        target_row[i+1] = colour;
         target_row = (unsigned*)((char*)target_row + stride);
-        target_row[i] = 0xFFFFFF;
+        target_row[i] = colour;
     }
 }
 
@@ -88,9 +88,13 @@ struct polynomial {
     int order;
 };
 
-#define POLY_ORDER 2
-long poly_coefficients[POLY_ORDER + 1] = {0, 0, 10000};
-struct polynomial poly = {poly_coefficients, 10000, POLY_ORDER};
+#define QUAD_ORDER 2
+long quad_coefficients[QUAD_ORDER + 1] = {0, 0, 10000};
+struct polynomial quad = {quad_coefficients, 10000, QUAD_ORDER};
+
+#define APPROX_ORDER 3
+long approx_coefficients[APPROX_ORDER + 1] = {9990, 5000, -1250, 625};
+struct polynomial approx = {approx_coefficients, 10000, APPROX_ORDER};
 
 long eval_polynomial(struct polynomial p, long x) {
     if (p.order == 0) return p.coefficients[0] / p.denominator;
@@ -99,8 +103,8 @@ long eval_polynomial(struct polynomial p, long x) {
     long result = p.coefficients[p.order];
     for (int i = p.order - 1; i >= 0; i--) {
         result *= x;
-        result += p.coefficients[i];
         result /= p.denominator;
+        result += p.coefficients[i];
     }
     return result;
 }
@@ -317,19 +321,44 @@ int main(int argc, char **argv) {
         /* Black background */
         fill_rectangle(back_buf, 0, 0, window_width, window_height, (RGBA){0, 0, 0});
 
-        /* axes */
+        /* Axes */
         draw_horizontal_line(back_buf, 0);
         draw_vertical_line(back_buf, 0);
 
-        /* Parabola point cloud */
+        /* Plots */
         long xs[window_width];
-        long ys[window_width];
         for (int i = 0; i < window_width; i++) {
-            long x = centre_x + zoom * (i - window_width / 2);
-            xs[i] = x;
-            ys[i] = bisect_polynomial(poly, x, 0, x + 10000);
+            xs[i] = centre_x + zoom * (i - window_width / 2);
         }
-        draw_points(back_buf, window_width, xs, ys);
+
+        long sqrt_ys[window_width];
+        for (int i = 0; i < window_width; i++) {
+            sqrt_ys[i] = bisect_polynomial(quad, xs[i] + 10000, -20000, xs[i] + 30000);
+        }
+        draw_points(back_buf, 0xFFFFFF, window_width, xs, sqrt_ys);
+
+        long poly_ys[window_width];
+        for (int i = 0; i < window_width; i++) {
+            long x = xs[i] + 10000;
+            int upscale = 0;
+            int downscale = 0;
+            while (x > 20000) {
+                x /= 4;
+                upscale += 1;
+            }
+            while (x < 5000 && x > 1) {
+                x *= 4;
+                downscale += 1;
+            }
+            long y = eval_polynomial(approx, x - 10000);
+            y <<= upscale;
+            y >>= downscale;
+            poly_ys[i] = y;
+        }
+        draw_points(back_buf, 0x0000FF, window_width, xs, poly_ys);
+
+        for (int i = 0; i < window_width; i++) poly_ys[i] -= sqrt_ys[i];
+        draw_points(back_buf, 0xFF0000, window_width, xs, poly_ys);
 
         /* Coordinates */
         static char text_data[25];
