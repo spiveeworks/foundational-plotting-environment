@@ -58,14 +58,38 @@ void draw_vertical_line(XImage *out, long x) {
     }
 }
 
+void draw_points(XImage *out, int count, long *xs, long *ys) {
+    char *data = out->data + out->xoffset;
+    int stride = out->bytes_per_line;
+
+    for (int ind = 0; ind < count; ind++) {
+        int i =  window_width / 2 + (xs[ind] - centre_x) / zoom;
+        int j = window_height / 2 - (ys[ind] - centre_y) / zoom;
+
+        if (i < 1) continue;
+        if (i >= out->width - 1) continue;
+        if (j < 1) continue;
+        if (j >= out->height - 1) continue;
+
+        unsigned *target_row = (unsigned*)&data[stride * (j-1)];
+        target_row[i] = 0xFFFFFF;
+        target_row = (unsigned*)((char*)target_row + stride);
+        target_row[i-1] = 0xFFFFFF;
+        target_row[i] = 0xFFFFFF;
+        target_row[i+1] = 0xFFFFFF;
+        target_row = (unsigned*)((char*)target_row + stride);
+        target_row[i] = 0xFFFFFF;
+    }
+}
+
 struct polynomial {
     long *coefficients;
     long denominator;
     int order;
 };
 
-#define POLY_ORDER 3
-long poly_coefficients[POLY_ORDER + 1] = {0, -500000000, 0, 10000};
+#define POLY_ORDER 2
+long poly_coefficients[POLY_ORDER + 1] = {0, 0, 10000};
 struct polynomial poly = {poly_coefficients, 10000, POLY_ORDER};
 
 long eval_polynomial(struct polynomial p, long x) {
@@ -293,38 +317,19 @@ int main(int argc, char **argv) {
         /* Black background */
         fill_rectangle(back_buf, 0, 0, window_width, window_height, (RGBA){0, 0, 0});
 
-        char *data = back_buf->data + back_buf->xoffset;
-        int stride = back_buf->bytes_per_line;
-
-        /* y = 2 line */
-        draw_horizontal_line(back_buf, 20000);
-
-        /* sqrt(2) bisections */
-        draw_vertical_line(back_buf, bisect_polynomial(poly, 20000, -20000, -10000));
-        draw_vertical_line(back_buf, bisect_polynomial(poly, 20000, -20000, 0));
-        draw_vertical_line(back_buf, bisect_polynomial(poly, 20000, 0, 50000));
+        /* axes */
+        draw_horizontal_line(back_buf, 0);
+        draw_vertical_line(back_buf, 0);
 
         /* Parabola point cloud */
-        long y[window_width];
+        long xs[window_width];
+        long ys[window_width];
         for (int i = 0; i < window_width; i++) {
             long x = centre_x + zoom * (i - window_width / 2);
-            y[i] = eval_polynomial(poly, x);
+            xs[i] = x;
+            ys[i] = bisect_polynomial(poly, x, 0, x + 10000);
         }
-        for (int i = 1; i < window_width - 1; i++) {
-            int j = window_height / 2 - (y[i] - centre_y) / zoom;
-
-            if (j < 1) continue;
-            if (j >= window_height - 1) continue;
-
-            unsigned *target_row = (unsigned*)&data[stride * (j-1)];
-            target_row[i] = 0xFFFFFF;
-            target_row += window_width;
-            target_row[i-1] = 0xFFFFFF;
-            target_row[i] = 0xFFFFFF;
-            target_row[i+1] = 0xFFFFFF;
-            target_row += window_width;
-            target_row[i] = 0xFFFFFF;
-        }
+        draw_points(back_buf, window_width, xs, ys);
 
         /* Coordinates */
         static char text_data[25];
