@@ -3,7 +3,8 @@
 
 start(Path) ->
     process_flag(trap_exit, true),
-    Port = open_port({spawn, Path}, [stream]),
+    Port = open_port({spawn, Path}, [stream, overlapped_io]),
+    io:fwrite("Started ~s on ~w.~n", [Path, Port]),
     loop(Port).
 
 loop(Port) ->
