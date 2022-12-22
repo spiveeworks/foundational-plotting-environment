@@ -2,11 +2,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef uint8_t byte;
-typedef uint8_t uint8;
-
 #include "window.h"
 #include "entrypoint.h"
+
+#include "calculation.h"
+
+typedef uint8_t byte;
 
 void initialise_nonblocking_stdin(void);
 int nonblocking_stdin(byte *buff, int cap);
@@ -141,7 +142,46 @@ void draw_frame(long frame, struct window *win) {
     win->back_buffer_drawn = true;
 }
 
+void test_functions(void) {
+    struct function_builder builder = create_function_builder(2);
+    struct instruction instr;
+
+    /* x2 = x0 * x0 */
+    instr.op = OP_MUL;
+    instr.binary.arg1 = 0;
+    instr.binary.arg2 = 0;
+    function_builder_push(&builder, &instr);
+
+    /* x3 = x1 * x1 */
+    instr.op = OP_MUL;
+    instr.binary.arg1 = 1;
+    instr.binary.arg2 = 1;
+    function_builder_push(&builder, &instr);
+
+    /* x4 = x2 + x3 */
+    instr.op = OP_ADD;
+    instr.binary.arg1 = 2;
+    instr.binary.arg2 = 3;
+    function_builder_push(&builder, &instr);
+
+    /* x5 = ilog(1000000) = 19*/
+    instr.op = OP_ILOG | OP_IMM1;
+    instr.binary.arg1 = 1000000;
+    function_builder_push(&builder, &instr);
+
+    struct function f = build_function(builder, 2);
+
+    int64 *xs = malloc(2 * sizeof(int64));
+    xs[0] = 30;
+    xs[1] = 40;
+    int64 *ys = calculate_function(&f, xs);
+    printf("Got result %lld\n", ys[0]);
+    fflush(stdout);
+}
+
 int entry_point(int argc, char **argv) {
+    test_functions();
+
     struct window win;
     create_window(&win, "Settlement WinPort", false);
     fputs("Window created.\n", stdout);
