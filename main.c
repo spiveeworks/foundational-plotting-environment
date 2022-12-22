@@ -6,6 +6,7 @@
 #include "entrypoint.h"
 
 #include "calculation.h"
+#include "plotter.h"
 
 typedef uint8_t byte;
 
@@ -142,53 +143,48 @@ void draw_frame(long frame, struct window *win) {
     win->back_buffer_drawn = true;
 }
 
-void test_functions(void) {
-    struct function_builder builder = create_function_builder(2);
-    struct instruction instr;
-
-    /* x2 = x0 * x0 */
-    instr.op = OP_MUL;
-    instr.binary.arg1 = 0;
-    instr.binary.arg2 = 0;
-    function_builder_push(&builder, &instr);
-
-    /* x3 = x1 * x1 */
-    instr.op = OP_MUL;
-    instr.binary.arg1 = 1;
-    instr.binary.arg2 = 1;
-    function_builder_push(&builder, &instr);
-
-    /* x4 = x2 + x3 */
-    instr.op = OP_ADD;
-    instr.binary.arg1 = 2;
-    instr.binary.arg2 = 3;
-    function_builder_push(&builder, &instr);
-
-    /* x5 = ilog(1000000) = 19*/
-    instr.op = OP_ILOG | OP_IMM1;
-    instr.binary.arg1 = 1000000;
-    function_builder_push(&builder, &instr);
-
-    struct function f = build_function(&builder, 2);
-
-    f.values[0] = 30;
-    f.values[1] = 40;
-    int64 *ys = calculate_function(&f);
-    printf("Got result %lld\n", ys[0]);
-    fflush(stdout);
-
-    destroy_function(&f);
-    /* Does nothing. Just testing that it doesn't double free. */
-    destroy_function_builder(&builder);
-}
-
 int entry_point(int argc, char **argv) {
-    test_functions();
-
     struct window win;
     create_window(&win, "Settlement WinPort", false);
     fputs("Window created.\n", stdout);
     fflush(stdout);
+
+    struct camera camera = {0};
+    camera.zoom = 1;
+
+    struct plotter_state plotter = {0};
+    plotter.state_var_count = 2;
+    int64 state[2] = {0, 0};
+    plotter.state_vars = state;
+    {
+        struct function_builder builder = create_function_builder(2);
+        plotter.update_and_construct = build_function(&builder, 2);
+    }
+    struct plot_object plot_objects[3];
+    plot_objects[0].type = PLOT_FREE_POINT;
+    plot_objects[0].params = malloc(2 * sizeof(struct plot_object_parameter));
+    plot_objects[0].param_count = 2;
+    plot_objects[0].params[0].is_constant = false;
+    plot_objects[0].params[0].val_index = 0;
+    plot_objects[0].params[1].is_constant = false;
+    plot_objects[0].params[1].val_index = 1;
+    plot_objects[1].type = PLOT_STATIC_POINT;
+    plot_objects[1].params = malloc(2 * sizeof(struct plot_object_parameter));
+    plot_objects[1].param_count = 2;
+    plot_objects[1].params[0].is_constant = true;
+    plot_objects[1].params[0].constant_val = 0;
+    plot_objects[1].params[1].is_constant = false;
+    plot_objects[1].params[1].val_index = 1;
+    plot_objects[2].type = PLOT_STATIC_POINT;
+    plot_objects[2].params = malloc(2 * sizeof(struct plot_object_parameter));
+    plot_objects[2].param_count = 2;
+    plot_objects[2].params[0].is_constant = false;
+    plot_objects[2].params[0].val_index = 0;
+    plot_objects[2].params[1].is_constant = true;
+    plot_objects[2].params[1].constant_val = 0;
+
+    plotter.plot_objects = plot_objects;
+    plotter.plot_object_count = 3;
 
     long frame = 0;
     while (true) {
@@ -204,7 +200,11 @@ int entry_point(int argc, char **argv) {
 
         poll_stdin();
 
-        draw_frame(frame, &win);
+        int64 pos_x = camera.centre_x + (win.mouse_x - win.width / 2) * camera.zoom;
+        int64 pos_y = camera.centre_y + (win.height / 2 - win.mouse_y) * camera.zoom;
+        update_plotter_state(&plotter, 0, pos_x, pos_y);
+        draw_plotter_objects(&win.back_buf, &camera, &plotter);
+
         flush_window(&win);
 
         frame++;
