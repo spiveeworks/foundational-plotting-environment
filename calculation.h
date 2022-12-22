@@ -104,11 +104,11 @@ struct function {
     int instruction_count;
     int intermediates_count;
     int result_count;
+    int64 *values;
 };
 
-int64 *calculate_function(struct function *f, int64 *args) {
-    int value_total = f->arg_count + f->intermediates_count;
-    int64 *values = realloc(args, value_total * sizeof(int64));
+int64 *calculate_function(struct function *f) {
+    int64 *values = f->values;
     int value_count = f->arg_count;
     for (int i = 0; i < f->instruction_count; i++) {
         struct instruction *instr = &f->instructions[i];
@@ -221,15 +221,7 @@ int64 *calculate_function(struct function *f, int64 *args) {
         if (op == OP_DIVMOD) values[value_count++] = result2;
     }
 
-    int64 *results = malloc(f->result_count * sizeof(int64));
-    int64 *result_start = &values[value_count - f->result_count];
-    for (int i = 0; i < f->result_count; i++) {
-        results[i] = result_start[i];
-    }
-
-    free(values);
-
-    return results;
+    return &values[value_count - f->result_count];
 }
 
 struct function_builder {
@@ -258,6 +250,8 @@ struct function build_function(
     result.instruction_count = builder.instruction_count;
     result.intermediates_count = builder.intermediates_count;
     result.result_count = result_count;
+    int value_total = builder.arg_count + builder.intermediates_count;
+    result.values = malloc(value_total * sizeof(int64));
 
     return result;
 }

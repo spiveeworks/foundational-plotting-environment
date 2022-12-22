@@ -171,10 +171,9 @@ void test_functions(void) {
 
     struct function f = build_function(builder, 2);
 
-    int64 *xs = malloc(2 * sizeof(int64));
-    xs[0] = 30;
-    xs[1] = 40;
-    int64 *ys = calculate_function(&f, xs);
+    f.values[0] = 30;
+    f.values[1] = 40;
+    int64 *ys = calculate_function(&f);
     printf("Got result %lld\n", ys[0]);
     fflush(stdout);
 }
