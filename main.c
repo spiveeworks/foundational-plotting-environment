@@ -169,13 +169,17 @@ void test_functions(void) {
     instr.binary.arg1 = 1000000;
     function_builder_push(&builder, &instr);
 
-    struct function f = build_function(builder, 2);
+    struct function f = build_function(&builder, 2);
 
     f.values[0] = 30;
     f.values[1] = 40;
     int64 *ys = calculate_function(&f);
     printf("Got result %lld\n", ys[0]);
     fflush(stdout);
+
+    destroy_function(&f);
+    /* Does nothing. Just testing that it doesn't double free. */
+    destroy_function_builder(&builder);
 }
 
 int entry_point(int argc, char **argv) {

@@ -237,21 +237,33 @@ struct function_builder create_function_builder(int arg_count) {
 }
 
 struct function build_function(
-    struct function_builder builder,
+    struct function_builder *builder,
     int result_count
 ) {
     struct function result;
 
-    result.arg_count = builder.arg_count;
-    result.instructions = realloc(
-        builder.instructions,
-        builder.instruction_count * sizeof(struct instruction)
-    );
-    result.instruction_count = builder.instruction_count;
-    result.intermediates_count = builder.intermediates_count;
-    result.result_count = result_count;
-    int value_total = builder.arg_count + builder.intermediates_count;
-    result.values = malloc(value_total * sizeof(int64));
+    result.arg_count = builder->arg_count;
+    if (builder->instruction_count > 0) {
+        result.instructions = realloc(
+            builder->instructions,
+            builder->instruction_count * sizeof(struct instruction)
+        );
+    } else {
+        result.instructions = 0;
+        if (builder->instruction_cap > 0) free(builder->instructions);
+    }
+    result.instruction_count = builder->instruction_count;
+    result.intermediates_count = builder->intermediates_count;
+    int value_total = builder->arg_count + builder->intermediates_count;
+    if (value_total > 0) result.values = malloc(value_total * sizeof(int64));
+    else result.values = NULL;
+    if (result_count <= value_total) result.result_count = result_count;
+    else result.result_count = value_total;
+
+    builder->instructions = NULL;
+    builder->instruction_cap = 0;
+    builder->instruction_count = 0;
+    builder->intermediates_count = 0;
 
     return result;
 }
@@ -276,6 +288,25 @@ void function_builder_push(
     builder->instructions[builder->instruction_count++] = *instr;
     if (instr->op == OP_DIVMOD) builder->intermediates_count += 2;
     else builder->intermediates_count += 1;
+}
+
+void destroy_function_builder(struct function_builder *builder) {
+    if (builder->instruction_cap > 0) free(builder->instructions);
+    builder->instructions = NULL;
+    builder->instruction_cap = 0;
+    builder->instruction_count = 0;
+    builder->intermediates_count = 0;
+}
+
+void destroy_function(struct function *f) {
+    if (f->instruction_count > 0) free(f->instructions);
+    if (f->values) free(f->values);
+    f->instructions = NULL;
+    f->instruction_count = 0;
+    f->intermediates_count = 0;
+    f->values = NULL;
+    f->arg_count = 0;
+    f->result_count = 0;
 }
 
 #endif
