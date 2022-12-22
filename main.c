@@ -186,6 +186,8 @@ int entry_point(int argc, char **argv) {
     plotter.plot_objects = plot_objects;
     plotter.plot_object_count = 3;
 
+    int selected_object = -1;
+
     long frame = 0;
     while (true) {
         struct window_event event;
@@ -194,6 +196,29 @@ int entry_point(int argc, char **argv) {
                 fputs("Window closed.\n", stdout);
                 fflush(stdout);
                 exit(EXIT_SUCCESS);
+            } else if (event.type == WINDOW_BUTTON_DOWN) {
+                int64 min_screen_quadrance = 100;
+                selected_object = -1;
+                for (int i = 0; i < plotter.plot_object_count; i++) {
+                    struct plot_object *it = &plotter.plot_objects[i];
+                    if (it->type != PLOT_FREE_POINT) {
+                        continue;
+                    }
+
+                    int64 x = it->params[0].prev_val;
+                    int64 y = it->params[1].prev_val;
+                    int sx =  win.width / 2 + (x - camera.centre_x) / camera.zoom;
+                    int sy = win.height / 2 - (y - camera.centre_y) / camera.zoom;
+                    int dx = sx - win.mouse_x;
+                    int dy = sy - win.mouse_y;
+                    int64 screen_quadrance = dx * dx + dy * dy;
+                    if (screen_quadrance < min_screen_quadrance) {
+                        min_screen_quadrance = screen_quadrance;
+                        selected_object = i;
+                    }
+                }
+            } else if (event.type == WINDOW_BUTTON_UP) {
+                selected_object = -1;
             }
             continue;
         }
@@ -202,7 +227,7 @@ int entry_point(int argc, char **argv) {
 
         int64 pos_x = camera.centre_x + (win.mouse_x - win.width / 2) * camera.zoom;
         int64 pos_y = camera.centre_y + (win.height / 2 - win.mouse_y) * camera.zoom;
-        update_plotter_state(&plotter, 0, pos_x, pos_y);
+        update_plotter_state(&plotter, selected_object, pos_x, pos_y);
         draw_plotter_objects(&win.back_buf, &camera, &plotter);
 
         flush_window(&win);

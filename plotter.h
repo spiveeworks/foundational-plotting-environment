@@ -18,6 +18,7 @@ struct plot_object_parameter {
         int64 constant_val;
         int val_index;
     };
+    int64 prev_val;
 };
 
 struct plot_object {
@@ -63,7 +64,18 @@ void update_plotter_state(
     for (int i = 0; i < plotter->state_var_count; i++) {
         plotter->state_vars[i] = output[i];
     }
+
+    for (int i = 0; i < plotter->plot_object_count; i++) {
+        struct plot_object *it = &plotter->plot_objects[i];
+        for (int j = 0; j < it->param_count; j++) {
+            struct plot_object_parameter *param = &it->params[j];
+            if (param->is_constant) param->prev_val = param->constant_val;
+            else param->prev_val = output[param->val_index];
+        }
+    }
 }
+
+/* Actual drawing */
 
 void fill_rectangle(
     ImageView *out,
@@ -94,8 +106,6 @@ void fill_rectangle(
         }
     }
 }
-
-/* Actual drawing */
 
 struct camera {
     int64 centre_x;
@@ -191,21 +201,19 @@ void draw_plotter_objects(
         switch (it->type) {
         case PLOT_FREE_POINT:
         case PLOT_STATIC_POINT:
-            struct plot_object_parameter *xparam = &it->params[0];
-            struct plot_object_parameter *yparam = &it->params[1];
-            int x = xparam->is_constant ? xparam->constant_val
-                                        : values[xparam->val_index];
-            int y = yparam->is_constant ? yparam->constant_val
-                                        : values[yparam->val_index];
+          {
+            int x = it->params[0].prev_val;
+            int y = it->params[1].prev_val;
             draw_point(out, camera, 0xFFFFFF, x, y);
             break;
+          }
         case PLOT_AXIS:
-            struct plot_object_parameter *param = &it->params[0];
-            int c = param->is_constant ? param->constant_val
-                                       : values[param->val_index];
+          {
+            int c = it->params[0].prev_val;
             if (it->is_horizontal) draw_horizontal_line(out, camera, c);
             else draw_vertical_line(out, camera, c);
             break;
+          }
         case PLOT_FUNCTION:
             break;
         }
