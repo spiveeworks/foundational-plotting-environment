@@ -165,8 +165,41 @@ struct deserialize_state {
 enum deserialize_command {
     DE_COMMAND_NIL,
     DE_COMMAND_NEW_CONSTRUCT,
-    DE_COMMAND_ADD_PLOT_OBJECT,
+    DE_COMMAND_ADD_FREE_POINT,
+    DE_COMMAND_ADD_STATIC_POINT,
+    DE_COMMAND_ADD_HORIZONTAL_AXIS,
+    DE_COMMAND_ADD_VERTICAL_AXIS,
+    DE_COMMAND_ADD_HORIZONTAL_CURVE,
+    DE_COMMAND_ADD_VERTICAL_CURVE,
 };
+
+struct plot_object_parameter try_deserialize_plot_object_param(
+    byte **next_p,
+    byte *end,
+    int max_val_index
+) {
+    struct plot_object_parameter result = {true};
+    byte *next = *next_p;
+    if (!next) return result;
+
+    if (next == end) {
+        *next_p = NULL;
+        return result;
+    }
+    result.is_constant = *next++;
+    if (result.is_constant != 0 && result.is_constant != 1) exit(EXIT_FAILURE);
+    int64 val = try_read_int7x(&next, end);
+    if (!next) {
+        *next_p = NULL;
+        return result;
+    }
+    if (result.is_constant) result.constant_val = val;
+    else if (val < 0 || val >= max_val_index) exit(EXIT_FAILURE);
+    else result.constant_val = val;
+
+    *next_p = next;
+    return result;
+}
 
 void try_deserialize_input(
     struct plotter_state *plotter,
@@ -197,10 +230,37 @@ void try_deserialize_input(
                 de->mode = DE_CONSTRUCT_FUN;
                 break;
               }
-            case DE_COMMAND_ADD_PLOT_OBJECT:
+            case DE_COMMAND_ADD_FREE_POINT:
+            case DE_COMMAND_ADD_STATIC_POINT:
               {
+                int val_count = plotter->update_and_construct.arg_count +
+                    plotter->update_and_construct.intermediates_count;
+                struct plot_object_parameter paramx =
+                    try_deserialize_plot_object_param(&next, end, val_count);
+                struct plot_object_parameter paramy =
+                    try_deserialize_plot_object_param(&next, end, val_count);
+                if (!next) return;
+                bool is_free = command == DE_COMMAND_ADD_FREE_POINT;
+                plotter_add_point(plotter, is_free, paramx, paramy);
                 break;
               }
+            case DE_COMMAND_ADD_HORIZONTAL_AXIS:
+            case DE_COMMAND_ADD_VERTICAL_AXIS:
+              {
+                int val_count = plotter->update_and_construct.arg_count +
+                    plotter->update_and_construct.intermediates_count;
+                struct plot_object_parameter paramc =
+                    try_deserialize_plot_object_param(&next, end, val_count);
+                if (!next) return;
+                bool is_vertical = command == DE_COMMAND_ADD_VERTICAL_AXIS;
+
+                plotter_add_axis(plotter, is_vertical, paramc);
+                break;
+              }
+            case DE_COMMAND_ADD_HORIZONTAL_CURVE:
+                break;
+            case DE_COMMAND_ADD_VERTICAL_CURVE:
+                break;
             default:
               exit(EXIT_FAILURE);
             }
@@ -230,17 +290,33 @@ void try_deserialize_input(
             if (next == end) return;
             enum operation op = *next++;
             instr.op = op;
+            bool imm1 = (op & OP_IMM1) != 0;
+            bool imm2 = (op & OP_IMM2) != 0;
+            op = op & 63; /* 00111111 */
+
+            int val_count = de->state_var_count
+                + de->builder.intermediates_count;
             if (op == OP_SELECT) {
-                int arg1 = try_read_int7x(&next, end);
-                int arg2 = try_read_int7x(&next, end);
-                int arg3 = try_read_int7x(&next, end);
+                int64 arg1 = try_read_int7x(&next, end);
+                int64 arg2 = try_read_int7x(&next, end);
+                int64 arg3 = try_read_int7x(&next, end);
                 if (!next) return;
+                if (!imm1 && arg1 < 0 || arg1 > val_count) exit(EXIT_FAILURE);
+                if (!imm2 && arg2 < 0 || arg2 > val_count) exit(EXIT_FAILURE);
+                if (arg3 < 0 || arg3 > val_count) exit(EXIT_FAILURE);
 
                 instr.args = malloc(3 * sizeof(int64));
+                instr.args[0] = arg1;
+                instr.args[1] = arg2;
+                instr.args[2] = arg3;
             } else {
-                instr.binary.arg1 = try_read_int7x(&next, end);
+                int64 arg1 = try_read_int7x(&next, end);
+                if (!imm1 && arg1 < 0 || arg1 > val_count) exit(EXIT_FAILURE);
+                instr.binary.arg1 = arg1;
                 if (op != OP_MOV && op != OP_NEG && op != OP_ILOG) {
-                    instr.binary.arg2 = try_read_int7x(&next, end);
+                    int64 arg2 = try_read_int7x(&next, end);
+                    if (!imm1 && arg2 < 0 || arg2 > val_count) exit(EXIT_FAILURE);
+                    instr.binary.arg2 = arg2;
                 }
                 if (!next) return;
             }

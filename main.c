@@ -87,7 +87,30 @@ struct plotter_state make_demo_plotter(void) {
     return plotter;
 }
 
+void make_test_deserialize_input(void) {
+    byte data[] = {
+        DE_COMMAND_NEW_CONSTRUCT, 2, 4,
+            OP_SUB, 0, 1,
+            OP_ADD, 0, 1,
+            OP_MOV, 0,
+            OP_MOV, 1,
+        DE_COMMAND_ADD_HORIZONTAL_AXIS, 1, 0,
+        DE_COMMAND_ADD_VERTICAL_AXIS, 1, 0,
+        DE_COMMAND_ADD_STATIC_POINT, 0, 2, 0, 3,
+        DE_COMMAND_ADD_FREE_POINT, 0, 0, 0, 1,
+    };
+
+    if (buffer_cap > 0) free(buffer);
+    buffer = malloc(sizeof(data));
+    memcpy(buffer, data, sizeof(data));
+    buffer_start = 0;
+    buffer_cap = sizeof(data);
+    buffer_count = sizeof(data);
+}
+
 int entry_point(int argc, char **argv) {
+    make_test_deserialize_input();
+
     struct window win;
     create_window(&win, "Settlement WinPort", false);
     fputs("Window created.\n", stdout);

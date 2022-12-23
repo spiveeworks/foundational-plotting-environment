@@ -39,6 +39,54 @@ struct plotter_state {
     int plot_object_count;
 };
 
+void plotter_add_object(
+    struct plotter_state *plotter,
+    struct plot_object it
+) {
+    if (plotter->plot_object_count == 0) {
+        plotter->plot_object_count = 1;
+        plotter->plot_objects = malloc(sizeof(struct plot_object));
+    } else {
+        plotter->plot_object_count++;
+        plotter->plot_objects = realloc(
+            plotter->plot_objects,
+            plotter->plot_object_count * sizeof(struct plot_object)
+        );
+    }
+    plotter->plot_objects[plotter->plot_object_count - 1] = it;
+}
+
+void plotter_add_point(
+    struct plotter_state *plotter,
+    bool is_free,
+    struct plot_object_parameter x,
+    struct plot_object_parameter y
+) {
+    struct plot_object it = {0};
+    it.type = is_free ? PLOT_FREE_POINT : PLOT_STATIC_POINT;
+    it.params = malloc(2 * sizeof(struct plot_object_parameter));
+    it.params[0] = x;
+    it.params[1] = y;
+    it.param_count = 2;
+
+    plotter_add_object(plotter, it);
+}
+
+void plotter_add_axis(
+    struct plotter_state *plotter,
+    bool is_vertical,
+    struct plot_object_parameter c
+) {
+    struct plot_object it = {0};
+    it.type = PLOT_AXIS;
+    it.is_vertical = is_vertical;
+    it.params = malloc(sizeof(struct plot_object_parameter));
+    it.params[0] = c;
+    it.param_count = 1;
+
+    plotter_add_object(plotter, it);
+}
+
 void update_plotter_state(
     struct plotter_state *plotter,
     int moved_plot_object,
