@@ -23,9 +23,11 @@ struct plot_object_parameter {
 
 struct plot_object {
     enum plot_object_type type;
-    bool is_horizontal;
+    bool is_vertical;
     struct plot_object_parameter *params;
     int param_count;
+
+    struct function function;
 };
 
 struct plotter_state {
@@ -113,7 +115,7 @@ struct camera {
     int64 zoom;
 };
 
-void draw_horizontal_line(ImageView *out, struct camera *camera, long y) {
+void draw_horizontal_line(ImageView *out, struct camera *camera, int64 y) {
     char *data = out->data;
     int stride = out->stride;
 
@@ -124,7 +126,7 @@ void draw_horizontal_line(ImageView *out, struct camera *camera, long y) {
     }
 }
 
-void draw_vertical_line(ImageView *out, struct camera *camera, long x) {
+void draw_vertical_line(ImageView *out, struct camera *camera, int64 x) {
     char *data = out->data;
     int stride = out->stride;
 
@@ -138,7 +140,7 @@ void draw_vertical_line(ImageView *out, struct camera *camera, long x) {
     }
 }
 
-void draw_point(ImageView *out, struct camera *camera, long colour, int x, int y) {
+void draw_point(ImageView *out, struct camera *camera, uint colour, int x, int y) {
     int i =  out->width / 2 + (x - camera->centre_x) / camera->zoom;
     int j = out->height / 2 - (y - camera->centre_y) / camera->zoom;
 
@@ -157,7 +159,7 @@ void draw_point(ImageView *out, struct camera *camera, long colour, int x, int y
     target_row[i] = colour;
 }
 
-void draw_points(ImageView *out, struct camera *camera, long colour, int count, long *xs, long *ys) {
+void draw_points(ImageView *out, struct camera *camera, uint colour, int count, int64 *xs, int64 *ys) {
     char *data = out->data;
     int stride = out->stride;
 
@@ -181,6 +183,65 @@ void draw_points(ImageView *out, struct camera *camera, long colour, int count, 
     }
 }
 
+void draw_curve(
+    ImageView *out,
+    struct camera *camera,
+    struct function *f,
+    struct plot_object_parameter *params,
+    int param_count
+) {
+    if (f->arg_count != param_count + 1) {
+        exit(EXIT_FAILURE);
+    }
+
+    int64 a = params[0].prev_val;
+    int64 b = params[1].prev_val;
+    int min =  out->width / 2 + (a - camera->centre_x) / camera->zoom;
+    int max =  out->width / 2 + (b - camera->centre_x) / camera->zoom;
+
+    if (min < 1) min = 0;
+    if (max >= out->width - 1) max = out->width - 2;
+
+    int count = max - min + 1;
+
+    if (count <= 0) return;
+
+    for (int i = 0; i < param_count; i++) {
+        f->values[i + 1] = params[i].prev_val;
+    }
+
+    for (int sx = min; sx <= max; sx++) {
+        int64 x = camera->centre_x + (sx - out->width / 2) * camera->zoom;
+
+        f->values[0] = x;
+        /* This one line hides most of the cost of this loop. We try to make
+           the rest as lean as we can, but ultimately we have to trust the
+           compiler to do good things with calculate_function's hot loop.
+           Function plotting is embarassingly parallel though, so we can make
+           this SIMD and/or parallel when necessary. */
+        int64 *vals = calculate_function(f);
+
+        /* inlined draw_point procedure */
+        /* Calculate sy as an int64 so that LLONG_MAX doesn't get cast to -1 */
+        int64 sy = out->height / 2 - (vals[0] - camera->centre_y) / camera->zoom;
+        sy = vals[0] - camera->centre_y;
+        sy = sy / camera->zoom;
+        sy = out->height / 2 - sy;
+
+        if (sy < 1) continue;
+        if (sy >= out->height - 1) continue;
+
+        unsigned *target_row = (unsigned*)&out->data[out->stride * (sy-1)];
+        target_row[sx] = 0xFFFFFF;
+        target_row = (unsigned*)((char*)target_row + out->stride);
+        target_row[sx-1] = 0xFFFFFF;
+        target_row[sx] = 0xFFFFFF;
+        target_row[sx+1] = 0xFFFFFF;
+        target_row = (unsigned*)((char*)target_row + out->stride);
+        target_row[sx] = 0xFFFFFF;
+    }
+}
+
 void draw_plotter_objects(
     ImageView *out,
     struct camera *camera,
@@ -200,6 +261,12 @@ void draw_plotter_objects(
 
         switch (it->type) {
         case PLOT_FREE_POINT:
+          {
+            int x = it->params[0].prev_val;
+            int y = it->params[1].prev_val;
+            draw_point(out, camera, 0x00CCFF, x, y);
+            break;
+          }
         case PLOT_STATIC_POINT:
           {
             int x = it->params[0].prev_val;
@@ -210,11 +277,18 @@ void draw_plotter_objects(
         case PLOT_AXIS:
           {
             int c = it->params[0].prev_val;
-            if (it->is_horizontal) draw_horizontal_line(out, camera, c);
-            else draw_vertical_line(out, camera, c);
+            if (it->is_vertical) draw_vertical_line(out, camera, c);
+            else draw_horizontal_line(out, camera, c);
             break;
           }
         case PLOT_FUNCTION:
+            draw_curve(
+                out,
+                camera,
+                &it->function,
+                it->params,
+                it->param_count
+            );
             break;
         }
     }

@@ -164,14 +164,24 @@ int64 *calculate_function(struct function *f) {
             /* Just trusting the compiler to do something with this at the
                moment. If that doesn't work on any platforms in particular then
                we could add inline assembly special cases. */
-            result1 = arg1 / arg2;
-            result2 = arg1 % arg2;
+            /* Hopefully these dbz guards aren't a problem, lol. */
+            if (arg2 == 0) {
+                result1 = 0x7FFFFFFFFFFFFFFF;
+                result2 = 0;
+            } else {
+                result1 = arg1 / arg2;
+                result2 = arg1 % arg2;
+            }
             break;
         case OP_DIV:
-            result1 = arg1 / arg2;
+            /* Hopefully these dbz guards aren't a problem, lol. */
+            if (arg2 == 0) result1 = 0x7FFFFFFFFFFFFFFF;
+            else result1 = arg1 / arg2;
             break;
         case OP_MOD:
-            result1 = arg1 % arg2;
+            /* Hopefully these dbz guards aren't a problem, lol. */
+            if (arg2 == 0) result1 = 0;
+            else result1 = arg1 % arg2;
             break;
 
         case OP_ILOG:
