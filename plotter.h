@@ -48,8 +48,9 @@ void update_plotter_state(
     if (plotter->state_var_count != plotter->update_and_construct.arg_count) {
         exit(EXIT_FAILURE);
     }
+    int64 *values = plotter->update_and_construct.values;
     for (int i = 0; i < plotter->state_var_count; i++) {
-        plotter->update_and_construct.values[i] = plotter->state_vars[i];
+        values[i] = plotter->state_vars[i];
     }
     if (moved_plot_object >= 0
         && moved_plot_object < plotter->plot_object_count
@@ -58,8 +59,8 @@ void update_plotter_state(
         struct plot_object *it = &plotter->plot_objects[moved_plot_object];
         int xi = it->params[0].val_index;
         int yi = it->params[1].val_index;
-        plotter->update_and_construct.values[xi] = move_x;
-        plotter->update_and_construct.values[yi] = move_y;
+        values[xi] = move_x;
+        values[yi] = move_y;
     }
 
     int64 *output = calculate_function(&plotter->update_and_construct);
@@ -72,7 +73,7 @@ void update_plotter_state(
         for (int j = 0; j < it->param_count; j++) {
             struct plot_object_parameter *param = &it->params[j];
             if (param->is_constant) param->prev_val = param->constant_val;
-            else param->prev_val = output[param->val_index];
+            else param->prev_val = values[param->val_index];
         }
     }
 }
@@ -199,7 +200,7 @@ void draw_curve(
     int min =  out->width / 2 + (a - camera->centre_x) / camera->zoom;
     int max =  out->width / 2 + (b - camera->centre_x) / camera->zoom;
 
-    if (min < 1) min = 0;
+    if (min < 1) min = 1;
     if (max >= out->width - 1) max = out->width - 2;
 
     int count = max - min + 1;
@@ -248,13 +249,6 @@ void draw_plotter_objects(
     struct plotter_state *plotter
 ) {
     fill_rectangle(out, 0, 0, out->width, out->height, (RGBA){0, 0, 0});
-
-    int64 *values;
-    {
-        struct function *f = &plotter->update_and_construct;
-        int value_count = f->arg_count + f->intermediates_count;
-        values = &f->values[value_count - f->result_count];
-    }
 
     for (int i = 0; i < plotter->plot_object_count; i++) {
         struct plot_object *it = &plotter->plot_objects[i];
