@@ -5,23 +5,25 @@
 #include "window.h"
 #include "entrypoint.h"
 
-#include "deserialize.h"
 #include "calculation.h"
 #include "plotter.h"
-
-typedef uint8_t byte;
+#include "deserialize.h"
 
 struct plotter_state make_demo_plotter(void) {
     struct plotter_state plotter = {0};
     plotter.state_var_count = 2;
-    static int64 state[2] = {0, 100};
+    int64 *state = malloc(2 * sizeof(int64));
+    state[0] = 0;
+    state[1] = 100;
     plotter.state_vars = state;
     {
         struct function_builder builder = create_function_builder(2);
         plotter.update_and_construct = build_function(&builder, 2);
     }
 
-    static struct plot_object plot_objects[4];
+    plotter.plot_object_count = 4;
+    struct plot_object *plot_objects =
+        malloc(plotter.plot_object_count * sizeof(struct plot_object));
 
     plot_objects[0].type = PLOT_FUNCTION;
     plot_objects[0].is_vertical = false;
@@ -81,7 +83,6 @@ struct plotter_state make_demo_plotter(void) {
     plot_objects[3].params[1].val_index = 1;
 
     plotter.plot_objects = plot_objects;
-    plotter.plot_object_count = sizeof(plot_objects)/sizeof(plot_objects[0]);
 
     return plotter;
 }
@@ -96,6 +97,7 @@ int entry_point(int argc, char **argv) {
     camera.zoom = 1;
 
     struct plotter_state plotter = make_demo_plotter();
+    struct deserialize_state deserialize_state = {0};
 
     int selected_object = -1;
 
@@ -134,7 +136,7 @@ int entry_point(int argc, char **argv) {
             continue;
         }
 
-        poll_stdin();
+        try_deserialize_input(&plotter, &deserialize_state);
 
         int64 pos_x = camera.centre_x + (win.mouse_x - win.width / 2) * camera.zoom;
         int64 pos_y = camera.centre_y - (win.mouse_y - win.height / 2) * camera.zoom;

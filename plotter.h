@@ -288,4 +288,20 @@ void draw_plotter_objects(
     }
 }
 
+void destroy_plotter(struct plotter_state *plotter) {
+    if (plotter->state_var_count > 0) free(plotter->state_vars);
+    plotter->state_vars = NULL;
+    plotter->state_var_count = 0;
+
+    destroy_function(&plotter->update_and_construct);
+
+    for (int i = 0; i < plotter->plot_object_count; i++) {
+        struct plot_object *it = &plotter->plot_objects[i];
+        if (it->param_count > 0) free(it->params);
+    }
+    if (plotter->plot_object_count > 0) free(plotter->plot_objects);
+    plotter->plot_objects = NULL;
+    plotter->plot_object_count = 0;
+}
+
 #endif

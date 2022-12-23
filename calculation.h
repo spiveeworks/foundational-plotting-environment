@@ -91,10 +91,10 @@ struct instruction {
     enum operation op;
     union {
         struct {
-            uint arg1;
-            uint arg2;
+            int64 arg1;
+            int64 arg2;
         } binary;
-        uint *args;
+        int64 *args;
     };
 };
 
