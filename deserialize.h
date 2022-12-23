@@ -151,6 +151,7 @@ int64 try_read_int7x(byte **next_p, byte *end) {
 enum deserialize_mode {
     /* DE_NULL, */
     DE_NEUTRAL,
+    DE_INITIAL_STATE,
     DE_CONSTRUCT_FUN,
 };
 
@@ -159,6 +160,8 @@ struct deserialize_state {
     int instruction_count; /* Number of instructions needed before builder is
                               complete. */
     int state_var_count;
+    int64 *state_vars;
+    int state_var_set_count;
     struct function_builder builder;
 };
 
@@ -221,13 +224,10 @@ void try_deserialize_input(
             case DE_COMMAND_NEW_CONSTRUCT:
               {
                 de->state_var_count = try_read_int7x(&next, end);
-                de->instruction_count = try_read_int7x(&next, end);
                 if (!next) return;
-
-                de->builder = create_function_builder(de->state_var_count);
-                printf("beginning function build\n");
-                fflush(stdout);
-                de->mode = DE_CONSTRUCT_FUN;
+                de->state_vars = malloc(de->state_var_count * sizeof(int64));
+                de->state_var_set_count = 0;
+                de->mode = DE_INITIAL_STATE;
                 break;
               }
             case DE_COMMAND_ADD_FREE_POINT:
@@ -266,6 +266,24 @@ void try_deserialize_input(
             }
             break;
           }
+        case DE_INITIAL_STATE:
+          {
+              if (de->state_var_set_count == de->state_var_count) {
+                de->instruction_count = try_read_int7x(&next, end);
+                if (!next) return;
+
+                de->builder = create_function_builder(de->state_var_count);
+                printf("beginning function build\n");
+                fflush(stdout);
+                de->mode = DE_CONSTRUCT_FUN;
+                break;
+              }
+              int64 val = try_read_int7x(&next, end);
+              if (!next) return;
+              de->state_vars[de->state_var_set_count] = val;
+              de->state_var_set_count++;
+              break;
+          }
         case DE_CONSTRUCT_FUN:
           {
             if (de->builder.instruction_count == de->instruction_count) {
@@ -274,8 +292,7 @@ void try_deserialize_input(
                 destroy_plotter(plotter);
 
                 plotter->state_var_count = de->state_var_count;
-                plotter->state_vars =
-                    calloc(de->state_var_count, sizeof(int64));
+                plotter->state_vars = de->state_vars;
                 plotter->update_and_construct = build_function(
                     &de->builder,
                     de->state_var_count

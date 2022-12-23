@@ -89,7 +89,7 @@ struct plotter_state make_demo_plotter(void) {
 
 void make_test_deserialize_input(void) {
     byte data[] = {
-        DE_COMMAND_NEW_CONSTRUCT, 2, 4,
+        DE_COMMAND_NEW_CONSTRUCT, 2, 50, 20, 4,
             OP_SUB, 0, 1,
             OP_ADD, 0, 1,
             OP_MOV, 0,
