@@ -67,6 +67,9 @@ enum operation {
     OP_DIVMOD,
     OP_DIV,
     OP_MOD,
+    OP_EUC_DIVMOD,
+    OP_EUC_DIV,
+    OP_EUC_MOD,
 
     OP_ILOG,
 

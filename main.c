@@ -29,13 +29,13 @@ struct plotter_state make_demo_plotter(void) {
     plot_objects[0].is_vertical = false;
     plot_objects[0].params = malloc(4 * sizeof(struct plot_object_parameter));
     plot_objects[0].param_count = 4;
-    plot_objects[0].params[0].is_constant = true;
+    plot_objects[0].params[0].is_variable = false;
     plot_objects[0].params[0].constant_val = -1000;
-    plot_objects[0].params[1].is_constant = true;
+    plot_objects[0].params[1].is_variable = false;
     plot_objects[0].params[1].constant_val = 1000;
-    plot_objects[0].params[2].is_constant = false;
+    plot_objects[0].params[2].is_variable = true;
     plot_objects[0].params[2].val_index = 0;
-    plot_objects[0].params[3].is_constant = false;
+    plot_objects[0].params[3].is_variable = true;
     plot_objects[0].params[3].val_index = 1;
     {
         struct function_builder builder = create_function_builder(5);
@@ -61,25 +61,25 @@ struct plotter_state make_demo_plotter(void) {
     plot_objects[1].type = PLOT_STATIC_POINT;
     plot_objects[1].params = malloc(2 * sizeof(struct plot_object_parameter));
     plot_objects[1].param_count = 2;
-    plot_objects[1].params[0].is_constant = true;
+    plot_objects[1].params[0].is_variable = false;
     plot_objects[1].params[0].constant_val = 0;
-    plot_objects[1].params[1].is_constant = false;
+    plot_objects[1].params[1].is_variable = true;
     plot_objects[1].params[1].val_index = 1;
 
     plot_objects[2].type = PLOT_STATIC_POINT;
     plot_objects[2].params = malloc(2 * sizeof(struct plot_object_parameter));
     plot_objects[2].param_count = 2;
-    plot_objects[2].params[0].is_constant = false;
+    plot_objects[2].params[0].is_variable = true;
     plot_objects[2].params[0].val_index = 0;
-    plot_objects[2].params[1].is_constant = true;
+    plot_objects[2].params[1].is_variable = false;
     plot_objects[2].params[1].constant_val = 0;
 
     plot_objects[3].type = PLOT_FREE_POINT;
     plot_objects[3].params = malloc(2 * sizeof(struct plot_object_parameter));
     plot_objects[3].param_count = 2;
-    plot_objects[3].params[0].is_constant = false;
+    plot_objects[3].params[0].is_variable = true;
     plot_objects[3].params[0].val_index = 0;
-    plot_objects[3].params[1].is_constant = false;
+    plot_objects[3].params[1].is_variable = true;
     plot_objects[3].params[1].val_index = 1;
 
     plotter.plot_objects = plot_objects;
@@ -95,11 +95,11 @@ void make_test_deserialize_input(void) {
             OP_NEG, 0,
             OP_MOV, 0,
             OP_MOV, 1,
-        DE_COMMAND_ADD_HORIZONTAL_AXIS, 1, 0,
-        DE_COMMAND_ADD_VERTICAL_AXIS, 1, 0,
-        DE_COMMAND_ADD_STATIC_POINT, 0, 2, 0, 3,
-        DE_COMMAND_ADD_FREE_POINT, 0, 0, 0, 1,
-        DE_COMMAND_ADD_HORIZONTAL_CURVE, 2, 0, 4, 0, 0, 2,
+        DE_COMMAND_ADD_HORIZONTAL_AXIS, 0, 0,
+        DE_COMMAND_ADD_VERTICAL_AXIS, 0, 0,
+        DE_COMMAND_ADD_STATIC_POINT, 1, 2, 1, 3,
+        DE_COMMAND_ADD_FREE_POINT, 1, 0, 1, 1,
+        DE_COMMAND_ADD_HORIZONTAL_CURVE, 2, 1, 4, 1, 0, 2,
             OP_MUL, 0, 0,
             OP_DIV | OP_IMM2, 3, 128, 1
     };
@@ -113,8 +113,6 @@ void make_test_deserialize_input(void) {
 }
 
 int entry_point(int argc, char **argv) {
-    make_test_deserialize_input();
-
     struct window win;
     create_window(&win, "Settlement WinPort", false);
     fputs("Window created.\n", stdout);

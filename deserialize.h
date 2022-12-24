@@ -196,16 +196,19 @@ struct plot_object_parameter try_deserialize_plot_object_param(
         *next_p = NULL;
         return result;
     }
-    result.is_constant = *next++;
-    if (result.is_constant != 0 && result.is_constant != 1) exit(EXIT_FAILURE);
+    result.is_variable = *next++;
+    if (result.is_variable != 0 && result.is_variable != 1) exit(EXIT_FAILURE);
     int64 val = try_read_int7x(&next, end);
     if (!next) {
         *next_p = NULL;
         return result;
     }
-    if (result.is_constant) result.constant_val = val;
-    else if (val < 0 || val >= max_val_index) exit(EXIT_FAILURE);
-    else result.constant_val = val;
+    if (result.is_variable) {
+        if (val < 0 || val >= max_val_index) exit(EXIT_FAILURE);
+        result.val_index = val;
+    } else {
+        result.constant_val = val;
+    }
 
     *next_p = next;
     return result;

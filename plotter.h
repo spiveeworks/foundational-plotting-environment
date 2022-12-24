@@ -13,7 +13,7 @@ enum plot_object_type {
 };
 
 struct plot_object_parameter {
-    bool is_constant;
+    bool is_variable;
     union {
         int64 constant_val;
         int val_index;
@@ -120,8 +120,8 @@ void update_plotter_state(
         struct plot_object *it = &plotter->plot_objects[i];
         for (int j = 0; j < it->param_count; j++) {
             struct plot_object_parameter *param = &it->params[j];
-            if (param->is_constant) param->prev_val = param->constant_val;
-            else param->prev_val = values[param->val_index];
+            if (param->is_variable) param->prev_val = values[param->val_index];
+            else param->prev_val = param->constant_val;
         }
     }
 }
