@@ -1,6 +1,5 @@
 -module(fpe).
 
--export([start_instance/1, reset_construction/2]).
 -export([create_function/1, append_instruction/2]).
 -export([function_to_binary/1, append_function_to_binary/2]).
 
@@ -9,6 +8,10 @@
          euclidean_divide/3, euclidean_modulo/3, integer_log/2, equal/3,
          not_equal/3, less/3, greater/3, less_or_equal/3, greater_or_equal/3,
          logical_and/3, logical_or/3, select/4]).
+
+-export([start_instance/1, reset_construction/2]).
+-export([add_free_point/3, add_static_point/3, add_horizontal_line/2,
+         add_vertical_line/2, add_horizontal_curve/3]).
 
 -type arg() :: {variable, non_neg_integer()} | {constant, integer()}.
 
@@ -172,4 +175,34 @@ reset_construction(Instance, Function) ->
 
     Instance#instance{state_var_count = StateVarCount,
                       total_var_count = TotalVarCount}.
+
+arg_to_binary({constant, A}) ->
+    append_integer_to_binary(<<0>>, A);
+arg_to_binary({variable, A}) ->
+    append_integer_to_binary(<<1>>, A).
+
+add_free_point(Instance, X, Y) ->
+    XBinary = arg_to_binary(X),
+    YBinary = arg_to_binary(Y),
+    port_command(Instance#instance.port, [2, XBinary, YBinary]).
+
+add_static_point(Instance, X, Y) ->
+    XBinary = arg_to_binary(X),
+    YBinary = arg_to_binary(Y),
+    port_command(Instance#instance.port, [3, XBinary, YBinary]).
+
+add_horizontal_line(Instance, Y) ->
+    YBinary = arg_to_binary(Y),
+    port_command(Instance#instance.port, [4, YBinary]).
+
+add_vertical_line(Instance, X) ->
+    XBinary = arg_to_binary(X),
+    port_command(Instance#instance.port, [5, XBinary]).
+
+add_horizontal_curve(Instance, Parameters, Function) ->
+    ArgBinaries = [arg_to_binary(Arg) || Arg <- Parameters],
+    LengthBinary = integer_to_binary_7bit(length(Parameters)),
+    ParameterBinary = [LengthBinary | ArgBinaries],
+    FunctionBinary = append_function_to_binary(<<>>, Function),
+    port_command(Instance#instance.port, [6, ParameterBinary, FunctionBinary]).
 

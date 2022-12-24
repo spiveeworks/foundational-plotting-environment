@@ -114,9 +114,7 @@ void make_test_deserialize_input(void) {
 
 int entry_point(int argc, char **argv) {
     struct window win;
-    create_window(&win, "Settlement WinPort", false);
-    fputs("Window created.\n", stdout);
-    fflush(stdout);
+    create_window(&win, "Foundational Plotting Environment", false);
 
     struct camera camera = {0};
     camera.zoom = 1;
@@ -131,8 +129,6 @@ int entry_point(int argc, char **argv) {
         struct window_event event;
         if (get_event(&win, &event, false)) {
             if (event.type == WINDOW_CLOSE) {
-                fputs("Window closed.\n", stdout);
-                fflush(stdout);
                 exit(EXIT_SUCCESS);
             } else if (event.type == WINDOW_BUTTON_DOWN) {
                 int64 min_screen_quadrance = 100;
