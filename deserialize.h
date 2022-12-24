@@ -114,8 +114,6 @@ void poll_stdin(void) {
     int count = 0;
     if (check_async_stdin(&count)) {
         buffer_count += count;
-        printf("got %d bytes\n", count);
-        fflush(stdout);
     }
 }
 
@@ -152,16 +150,25 @@ enum deserialize_mode {
     /* DE_NULL, */
     DE_NEUTRAL,
     DE_INITIAL_STATE,
-    DE_CONSTRUCT_FUN,
+    DE_CONSTRUCT_FUN, /* Deserialize the 'construct' function. */
+    DE_CURVE_PARAMS,
+    DE_CURVE_FUN,
 };
 
 struct deserialize_state {
     enum deserialize_mode mode;
+
+    int64 *state_vars;
+    int state_var_count;
+    int state_var_set_count;
+
+    bool is_vertical;
+    struct plot_object_parameter *curve_params;
+    int curve_param_count;
+    int curve_param_set_count;
+
     int instruction_count; /* Number of instructions needed before builder is
                               complete. */
-    int state_var_count;
-    int64 *state_vars;
-    int state_var_set_count;
     struct function_builder builder;
 };
 
@@ -202,6 +209,62 @@ struct plot_object_parameter try_deserialize_plot_object_param(
 
     *next_p = next;
     return result;
+}
+
+void try_deserialize_instruction(
+    struct function_builder *builder,
+    byte **next_p,
+    byte *end
+) {
+    byte *next = *next_p;
+    if (!next) return;
+
+    struct instruction instr;
+    if (next == end) {
+        *next_p = NULL;
+        return;
+    }
+    enum operation op = *next++;
+    instr.op = op;
+    bool imm1 = (op & OP_IMM1) != 0;
+    bool imm2 = (op & OP_IMM2) != 0;
+    op = op & 63; /* 00111111 */
+
+    int val_count = builder->arg_count
+        + builder->intermediates_count;
+    if (op == OP_SELECT) {
+        int64 arg1 = try_read_int7x(&next, end);
+        int64 arg2 = try_read_int7x(&next, end);
+        int64 arg3 = try_read_int7x(&next, end);
+        if (!next) {
+            *next_p = NULL;
+            return;
+        }
+        if (!imm1 && (arg1 < 0 || arg1 >= val_count)) exit(EXIT_FAILURE);
+        if (!imm2 && (arg2 < 0 || arg2 >= val_count)) exit(EXIT_FAILURE);
+        if (arg3 < 0 || arg3 >= val_count) exit(EXIT_FAILURE);
+
+        instr.args = malloc(3 * sizeof(int64));
+        instr.args[0] = arg1;
+        instr.args[1] = arg2;
+        instr.args[2] = arg3;
+    } else {
+        int64 arg1 = try_read_int7x(&next, end);
+        if (!imm1 && (arg1 < 0 || arg1 >= val_count)) exit(EXIT_FAILURE);
+        instr.binary.arg1 = arg1;
+        if (op != OP_MOV && op != OP_NEG && op != OP_ILOG) {
+            int64 arg2 = try_read_int7x(&next, end);
+            if (!imm2 && (arg2 < 0 || arg2 >= val_count)) exit(EXIT_FAILURE);
+            instr.binary.arg2 = arg2;
+        }
+        if (!next) {
+            *next_p = NULL;
+            return;
+        }
+    }
+
+    *next_p = next;
+    function_builder_push(builder, &instr);
 }
 
 void try_deserialize_input(
@@ -258,8 +321,15 @@ void try_deserialize_input(
                 break;
               }
             case DE_COMMAND_ADD_HORIZONTAL_CURVE:
-                break;
             case DE_COMMAND_ADD_VERTICAL_CURVE:
+                de->curve_param_count = try_read_int7x(&next, end);
+                if (!next) return;
+                de->curve_params = malloc(
+                    de->curve_param_count * sizeof(struct plot_object_parameter)
+                );
+                de->curve_param_set_count = 0;
+                de->is_vertical = command == DE_COMMAND_ADD_VERTICAL_CURVE;
+                de->mode = DE_CURVE_PARAMS;
                 break;
             default:
               exit(EXIT_FAILURE);
@@ -267,28 +337,40 @@ void try_deserialize_input(
             break;
           }
         case DE_INITIAL_STATE:
-          {
-              if (de->state_var_set_count == de->state_var_count) {
+            if (de->state_var_set_count == de->state_var_count) {
                 de->instruction_count = try_read_int7x(&next, end);
                 if (!next) return;
 
-                de->builder = create_function_builder(de->state_var_count);
-                printf("beginning function build\n");
-                fflush(stdout);
+                de->builder =
+                    create_function_builder(de->state_var_count);
                 de->mode = DE_CONSTRUCT_FUN;
-                break;
-              }
-              int64 val = try_read_int7x(&next, end);
-              if (!next) return;
-              de->state_vars[de->state_var_set_count] = val;
-              de->state_var_set_count++;
-              break;
-          }
+            } else {
+                int64 val = try_read_int7x(&next, end);
+                if (!next) return;
+                de->state_vars[de->state_var_set_count] = val;
+                de->state_var_set_count++;
+            }
+            break;
+        case DE_CURVE_PARAMS:
+            if (de->curve_param_set_count == de->curve_param_count) {
+                de->instruction_count = try_read_int7x(&next, end);
+                if (!next) return;
+
+                de->builder =
+                    create_function_builder(de->curve_param_count + 1);
+                de->mode = DE_CURVE_FUN;
+            } else {
+                int val_count = plotter->update_and_construct.arg_count +
+                    plotter->update_and_construct.intermediates_count;
+                struct plot_object_parameter param =
+                    try_deserialize_plot_object_param(&next, end, val_count);
+                if (!next) return;
+                de->curve_params[de->curve_param_set_count] = param;
+                de->curve_param_set_count++;
+            }
+            break;
         case DE_CONSTRUCT_FUN:
-          {
             if (de->builder.instruction_count == de->instruction_count) {
-                printf("ending function build\n");
-                fflush(stdout);
                 destroy_plotter(plotter);
 
                 plotter->state_var_count = de->state_var_count;
@@ -301,49 +383,27 @@ void try_deserialize_input(
                 plotter->plot_object_count = 0;
 
                 de->mode = DE_NEUTRAL;
-                break;
-            }
-            struct instruction instr;
-            if (next == end) return;
-            enum operation op = *next++;
-            instr.op = op;
-            bool imm1 = (op & OP_IMM1) != 0;
-            bool imm2 = (op & OP_IMM2) != 0;
-            op = op & 63; /* 00111111 */
-
-            int val_count = de->state_var_count
-                + de->builder.intermediates_count;
-            if (op == OP_SELECT) {
-                int64 arg1 = try_read_int7x(&next, end);
-                int64 arg2 = try_read_int7x(&next, end);
-                int64 arg3 = try_read_int7x(&next, end);
-                if (!next) return;
-                if (!imm1 && arg1 < 0 || arg1 > val_count) exit(EXIT_FAILURE);
-                if (!imm2 && arg2 < 0 || arg2 > val_count) exit(EXIT_FAILURE);
-                if (arg3 < 0 || arg3 > val_count) exit(EXIT_FAILURE);
-
-                instr.args = malloc(3 * sizeof(int64));
-                instr.args[0] = arg1;
-                instr.args[1] = arg2;
-                instr.args[2] = arg3;
             } else {
-                int64 arg1 = try_read_int7x(&next, end);
-                if (!imm1 && arg1 < 0 || arg1 > val_count) exit(EXIT_FAILURE);
-                instr.binary.arg1 = arg1;
-                if (op != OP_MOV && op != OP_NEG && op != OP_ILOG) {
-                    int64 arg2 = try_read_int7x(&next, end);
-                    if (!imm1 && arg2 < 0 || arg2 > val_count) exit(EXIT_FAILURE);
-                    instr.binary.arg2 = arg2;
-                }
+                try_deserialize_instruction(&de->builder, &next, end);
                 if (!next) return;
             }
-
-            printf("got operation\n");
-            fflush(stdout);
-
-            function_builder_push(&de->builder, &instr);
             break;
-          }
+        case DE_CURVE_FUN:
+            if (de->builder.instruction_count == de->instruction_count) {
+                struct plot_object curve;
+                curve.type = PLOT_FUNCTION;
+                curve.is_vertical = de->is_vertical;
+                curve.params = de->curve_params;
+                curve.param_count = de->curve_param_count;
+                curve.function = build_function(&de->builder, 1);
+                plotter_add_object(plotter, curve);
+
+                de->mode = DE_NEUTRAL;
+            } else {
+                try_deserialize_instruction(&de->builder, &next, end);
+                if (!next) return;
+            }
+            break;
         }
 
         if (!next) return;
