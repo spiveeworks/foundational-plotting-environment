@@ -9,7 +9,7 @@ interval() ->
     {_F3, _Y} = fpe:add(F2, Y1, Dy).
 
 movable_interval() ->
-    I = fpe:start_instance("main.exe"),
+    I = fpe:start_instance("fpe"),
     movable_interval(I).
 
 movable_interval(I) ->

@@ -198,7 +198,7 @@ append_function_to_binary(Acc, #function{instructions = Instrs}) ->
                    total_var_count :: non_neg_integer()}).
 
 start_instance(Path) ->
-    Port = open_port({spawn, Path}, [stream, overlapped_io]),
+    Port = open_port({spawn_executable, Path}, [stream, overlapped_io]),
     #instance{port = Port, state_var_count = 0, total_var_count = 0}.
 
 reset_construction_command(InitialState, Function, NewState) ->
