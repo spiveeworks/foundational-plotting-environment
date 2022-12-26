@@ -16,7 +16,7 @@
 
 -type arg() :: {variable, non_neg_integer()} | integer().
 
--type unary_op() :: mov | negate | integer_log.
+-type unary_op() :: mov | neg | integer_log.
 -type binary_op() :: add | sub | shift_left | shift_right | mul
     | divide_modulo | divide | modulo
     | euclidean_divide_modulo | euclidean_divide | euclidien_modulo
