@@ -6,7 +6,7 @@ interval() ->
     {F0, [X, X1, _X2, Y1, Width, Height]} = fpe:create_function(6),
     {F1, Dx} = fpe:sub(F0, X, X1),
     {F2, DyDx} = fpe:mul(F1, Dx, Height),
-    {F3, SemiWidth} = fpe:divide(F2, Width, {constant, 2}),
+    {F3, SemiWidth} = fpe:divide(F2, Width, 2),
     {F4, DyDxPlus} = fpe:add(F3, DyDx, SemiWidth),
     {F5, Dy} = fpe:divide(F4, DyDxPlus, Width),
     {F6, Y} = fpe:add(F5, Y1, Dy),

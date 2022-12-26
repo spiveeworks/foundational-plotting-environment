@@ -14,7 +14,7 @@
 -export([add_free_point/3, add_static_point/3, add_horizontal_line/2,
          add_vertical_line/2, add_horizontal_curve/4]).
 
--type arg() :: {variable, non_neg_integer()} | {constant, integer()}.
+-type arg() :: {variable, non_neg_integer()} | integer().
 
 -type unary_op() :: mov | negate | integer_log.
 -type binary_op() :: add | sub | shift_left | shift_right | mul
@@ -73,24 +73,30 @@ instruction_to_binary({Op, {variable, A}}) ->
     Opcode = opcode(Op),
     ABin = integer_to_binary_7bit(A),
     <<Opcode, ABin/binary>>;
-instruction_to_binary({Op, {constant, A}}) ->
-    Opcode = opcode(Op) bor 128,
-    ABin = integer_to_binary_7bit(A),
+instruction_to_binary({Op, A}) ->
+    case A of {variable, AVal} -> Imm1 = 0;
+              AVal when is_integer(AVal) -> Imm1 = 128 end,
+    Opcode = opcode(Op) bor Imm1,
+    ABin = integer_to_binary_7bit(AVal),
     <<Opcode, ABin/binary>>;
-instruction_to_binary({Op, {ASort, A}, {BSort, B}}) ->
-    Imm1 = case ASort of variable -> 0; constant -> 128 end,
-    Imm2 = case BSort of variable -> 0; constant -> 64 end,
+instruction_to_binary({Op, A, B}) ->
+    case A of {variable, AVal} -> Imm1 = 0;
+              AVal when is_integer(AVal) -> Imm1 = 128 end,
+    case B of {variable, BVal} -> Imm2 = 0;
+              BVal when is_integer(BVal) -> Imm2 = 64 end,
     Opcode = opcode(Op) bor Imm1 bor Imm2,
-    ABin = integer_to_binary_7bit(A),
-    BBin = integer_to_binary_7bit(B),
+    ABin = integer_to_binary_7bit(AVal),
+    BBin = integer_to_binary_7bit(BVal),
     <<Opcode, ABin/binary, BBin/binary>>;
-instruction_to_binary({Op, {ASort, A}, {BSort, B}, {variable, C}}) ->
-    Imm1 = case ASort of variable -> 0; constant -> 128 end,
-    Imm2 = case BSort of variable -> 0; constant -> 64 end,
+instruction_to_binary({Op, A, B, {variable, CVal}}) ->
+    case A of {variable, AVal} -> Imm1 = 0;
+              AVal when is_integer(AVal) -> Imm1 = 128 end,
+    case B of {variable, BVal} -> Imm2 = 0;
+              BVal when is_integer(BVal) -> Imm2 = 64 end,
     Opcode = opcode(Op) bor Imm1 bor Imm2,
-    ABin = integer_to_binary_7bit(A),
-    BBin = integer_to_binary_7bit(B),
-    CBin = integer_to_binary_7bit(C),
+    ABin = integer_to_binary_7bit(AVal),
+    BBin = integer_to_binary_7bit(BVal),
+    CBin = integer_to_binary_7bit(CVal),
     <<Opcode, ABin/binary, BBin/binary, CBin/binary>>.
 
 -record(function, {arg_count :: non_neg_integer(),
@@ -203,7 +209,7 @@ reset_construction(Instance, InitialState, Function, NewState) ->
         {err, Reason} -> {err, Reason}
     end.
 
-arg_to_binary({constant, A}) ->
+arg_to_binary(A) when is_integer(A) ->
     append_integer_to_binary(<<0>>, A);
 arg_to_binary({variable, A}) ->
     append_integer_to_binary(<<1>>, A).
