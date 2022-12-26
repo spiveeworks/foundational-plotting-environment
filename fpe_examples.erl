@@ -32,7 +32,8 @@ movable_interval(I) ->
 
     {ok, NewI} = fpe:reset_construction(I, [-100, 0, 100, 0], Construction,
                                         [X1, Y1, X2, Y2]),
-    fpe:add_horizontal_curve(NewI, [LeftX, RightX, LeftY, Width, Height, Bias],
+    fpe:add_horizontal_curve(NewI, {LeftX, RightX},
+                             [LeftY, Width, Height, Bias],
                              IntervalFunction, IntervalOutput),
     fpe:add_free_point(NewI, X1, Y1),
     fpe:add_free_point(NewI, X2, Y2).

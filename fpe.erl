@@ -12,7 +12,7 @@
 -export([start_instance/1, reset_construction_command/3,
          reset_construction/4]).
 -export([add_free_point/3, add_static_point/3, add_horizontal_line/2,
-         add_vertical_line/2, add_horizontal_curve/4]).
+         add_vertical_line/2, add_horizontal_curve/5]).
 
 -type arg() :: {variable, non_neg_integer()} | integer().
 
@@ -252,7 +252,8 @@ add_vertical_line(Instance, X) ->
     XBinary = arg_to_binary(X),
     port_command(Instance#instance.port, [5, XBinary]).
 
-add_horizontal_curve(Instance, Parameters, Function, Output) ->
+add_horizontal_curve(Instance, {LeftBound, RightBound}, ExtraParameters, Function, Output) ->
+    Parameters = [LeftBound | [RightBound | ExtraParameters]],
     ArgBinaries = lists:map(fun arg_to_binary/1, Parameters),
     LengthBinary = integer_to_binary_7bit(length(Parameters)),
     ParameterBinary = [LengthBinary | ArgBinaries],
