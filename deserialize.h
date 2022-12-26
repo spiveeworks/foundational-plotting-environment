@@ -8,13 +8,14 @@
 
 typedef uint8_t byte;
 
-void initialise_nonblocking_stdin(void);
-int nonblocking_stdin(byte *buff, int cap);
-
-bool nonblocking_stdin_initialised;
 bool async_stdin_started;
 
+void start_async_stdin(byte *buff, int cap);
+bool check_async_stdin(int *count_out);
+
 #ifdef _WIN32
+  bool nonblocking_stdin_initialised;
+
   HANDLE stdin_handle;
   void initialise_nonblocking_stdin(void) {
       stdin_handle = GetStdHandle(STD_INPUT_HANDLE);
@@ -33,7 +34,7 @@ bool async_stdin_started;
       }
       async_stdin_started = true;
   }
-  bool check_async_stdin(int *count) {
+  bool check_async_stdin(int *count_out) {
       DWORD out_word = 0;
       BOOL result = GetOverlappedResult(
           stdin_handle,
@@ -41,36 +42,40 @@ bool async_stdin_started;
           &out_word,
           false
       );
-      if (count) *count = out_word;
+      if (count_out) *count_out = out_word;
       if (result) async_stdin_started = false;
       return result;
   }
 #else /* End of Windows, start of unix. */
   #include <unistd.h>
-
-  void initialise_nonblocking_stdin(void) {
-      /* Haven't actually tried this on linux, but it definitely doesn't work
-         on cygwin. */
-      int flags = fcntl(0, F_GETFD);
-      fcntl(0, F_SETFD, flags | O_NONBLOCK);
-
-      nonblocking_stdin_initialised = true;
-  }
+  #include <pthread.h>
 
   byte *stdin_buff;
   int stdin_cap;
+  volatile int stdin_bytes_read;
+  volatile bool stdin_worker_done;
+
+  pthread_t reading_thread;
+
+  void *read_worker_proc(void *p) {
+      int count = read(0, stdin_buff, stdin_cap);
+      stdin_bytes_read = count;
+      stdin_worker_done = true;
+      return NULL;
+  }
+
   void start_async_stdin(byte *buff, int cap) {
-      if (!nonblocking_stdin_initialised) initialise_nonblocking_stdin();
+      stdin_worker_done = false;
+      pthread_create(&reading_thread, NULL, read_worker_proc, NULL);
 
       stdin_buff = buff;
       stdin_cap = cap;
       async_stdin_started = true;
   }
-  bool check_async_stdin(int *count) {
-      int out = read(0, stdin_buff, stdin_cap);
-      if (out > 0) {
+  bool check_async_stdin(int *count_out) {
+      if (stdin_worker_done) {
           async_stdin_started = false;
-          if (count) *count = out;
+          *count_out = stdin_bytes_read;
           return true;
       } else {
           return false;
