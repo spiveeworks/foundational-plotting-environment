@@ -1,6 +1,6 @@
 -module(fpe).
 
--export([create_function/1, append_instruction/2]).
+-export([create_function/1, append_instruction/2, return_args/2]).
 -export([function_to_binary/1, append_function_to_binary/2]).
 
 -export([add/3, sub/3, neg/2, shift_left/3, shift_right/3, mul/3,
@@ -9,13 +9,14 @@
          not_equal/3, less/3, greater/3, less_or_equal/3, greater_or_equal/3,
          logical_and/3, logical_or/3, select/4]).
 
--export([start_instance/1, reset_construction/2]).
+-export([start_instance/1, reset_construction_command/3,
+         reset_construction/4]).
 -export([add_free_point/3, add_static_point/3, add_horizontal_line/2,
-         add_vertical_line/2, add_horizontal_curve/3]).
+         add_vertical_line/2, add_horizontal_curve/4]).
 
 -type arg() :: {variable, non_neg_integer()} | {constant, integer()}.
 
--type unary_op() :: negate | integer_log.
+-type unary_op() :: mov | negate | integer_log.
 -type binary_op() :: add | sub | shift_left | shift_right | mul
     | divide_modulo | divide | modulo
     | euclidean_divide_modulo | euclidean_divide | euclidien_modulo
@@ -29,6 +30,7 @@
 
 -spec opcode(operation()) -> byte().
 
+opcode(mov)                     ->  0;
 opcode(add)                     ->  1;
 opcode(sub)                     ->  2;
 opcode(neg)                     ->  3;
@@ -115,6 +117,16 @@ append_instruction(F, Instr) ->
         2 -> {NewF, {variable, Count}, {variable, Count + 1}}
     end.
 
+% Move some values and variables to the end of the stack, so that they are
+% visible as function results, for the state update function, and curve
+% definitions.
+return_args(F, []) ->
+    F;
+return_args(F, [Arg | Args]) ->
+    {NextF, _} = append_instruction(F, {mov, Arg}),
+    return_args(NextF, Args).
+
+
 % Convenience functions, to write Erlang code that looks similar to the FPE
 % code it represents.
 add(F, A, B) ->              append_instruction(F, {add, A, B}).
@@ -163,18 +175,33 @@ start_instance(Path) ->
     Port = open_port({spawn, Path}, [stream, overlapped_io]),
     #instance{port = Port, state_var_count = 0, total_var_count = 0}.
 
-reset_construction(Instance, Function) ->
-    StateVarCount = Function#function.arg_count,
-    TotalVarCount = StateVarCount + Function#function.val_count,
+reset_construction_command(InitialState, Function, NewState) ->
+    StateSize = Function#function.arg_count,
+    TotalVarCount = StateSize + Function#function.val_count,
 
-    State = [StateVarCount, lists:duplicate(StateVarCount, 0)],
+    State = lists:map(fun integer_to_binary_7bit/1,
+                      [StateSize | InitialState]),
 
-    Construction = append_function_to_binary(<<>>, Function),
+    FunctionWithRet = return_args(Function, NewState),
+    Construction = append_function_to_binary(<<>>, FunctionWithRet),
 
-    port_command(Instance#instance.port, [1, State, Construction]),
+    Command = list_to_binary([1, State, Construction]),
 
-    Instance#instance{state_var_count = StateVarCount,
-                      total_var_count = TotalVarCount}.
+    if length(InitialState) =/= StateSize ->
+           {err, state_size_mismatch};
+       length(NewState) =/= StateSize ->
+           {err, state_size_mismatch};
+       true ->
+           {ok, Command, StateSize, TotalVarCount}
+    end.
+reset_construction(Instance, InitialState, Function, NewState) ->
+    case reset_construction_command(InitialState, Function, NewState) of
+        {ok, Command, StateSize, TotalVarCount} ->
+            port_command(Instance#instance.port, Command),
+            {ok, Instance#instance{state_var_count = StateSize,
+                                  total_var_count = TotalVarCount}};
+        {err, Reason} -> {err, Reason}
+    end.
 
 arg_to_binary({constant, A}) ->
     append_integer_to_binary(<<0>>, A);
@@ -199,10 +226,11 @@ add_vertical_line(Instance, X) ->
     XBinary = arg_to_binary(X),
     port_command(Instance#instance.port, [5, XBinary]).
 
-add_horizontal_curve(Instance, Parameters, Function) ->
-    ArgBinaries = [arg_to_binary(Arg) || Arg <- Parameters],
+add_horizontal_curve(Instance, Parameters, Function, Output) ->
+    ArgBinaries = lists:map(fun arg_to_binary/1, Parameters),
     LengthBinary = integer_to_binary_7bit(length(Parameters)),
     ParameterBinary = [LengthBinary | ArgBinaries],
-    FunctionBinary = append_function_to_binary(<<>>, Function),
+    FunctionWithRet = return_args(Function, [Output]),
+    FunctionBinary = append_function_to_binary(<<>>, FunctionWithRet),
     port_command(Instance#instance.port, [6, ParameterBinary, FunctionBinary]).
 

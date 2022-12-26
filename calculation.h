@@ -163,11 +163,11 @@ int64 *calculate_function(struct function *f) {
         case OP_MUL:
             result1 = arg1 * arg2;
             break;
+
+        /* Division operations. These have dbz guards and euclidean sign
+         * cases... Hopefully the compiler does something good with these?
+         * Otherwise we could try some inline assembly. */
         case OP_DIVMOD:
-            /* Just trusting the compiler to do something with this at the
-               moment. If that doesn't work on any platforms in particular then
-               we could add inline assembly special cases. */
-            /* Hopefully these dbz guards aren't a problem, lol. */
             if (arg2 == 0) {
                 result1 = 0x7FFFFFFFFFFFFFFF;
                 result2 = 0;
@@ -177,14 +177,37 @@ int64 *calculate_function(struct function *f) {
             }
             break;
         case OP_DIV:
-            /* Hopefully these dbz guards aren't a problem, lol. */
             if (arg2 == 0) result1 = 0x7FFFFFFFFFFFFFFF;
             else result1 = arg1 / arg2;
             break;
         case OP_MOD:
-            /* Hopefully these dbz guards aren't a problem, lol. */
             if (arg2 == 0) result1 = 0;
             else result1 = arg1 % arg2;
+            break;
+        case OP_EUC_DIVMOD:
+            if (arg2 == 0) {
+                result1 = 0x7FFFFFFFFFFFFFFF;
+                result2 = 0;
+            } else if (arg1 >= 0) {
+                result1 = arg1 / arg2;
+                result2 = arg1 % arg2;
+            } else {
+                /* e.g. arg1 = -1 -> shifted = -arg2
+                                  -> result1 -> -1, result2 = arg2 - 1,
+                        arg1 = -n * arg2 -> shifted = -(n+1) * arg2 + 1
+                                         -> result1 = n, result2 = 0, */
+                arg1 = arg1 - arg2 + 1;
+                result1 = arg1 / arg2;
+                result2 = arg1 % arg2 + arg2 - 1;
+            }
+            break;
+        case OP_EUC_DIV:
+            if (arg2 == 0) result1 = 0x7FFFFFFFFFFFFFFF;
+            else result1 = (arg1 - arg2 + 1) / arg2;
+            break;
+        case OP_EUC_MOD:
+            if (arg2 == 0) result1 = 0;
+            else result1 = (arg1 - arg2 + 1) % arg2 + arg2 - 1;
             break;
 
         case OP_ILOG:
