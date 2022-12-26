@@ -5,10 +5,8 @@
 interval() ->
     {F0, [X, X1, _X2, Y1, Width, Height, Bias]} = fpe:create_function(7),
     {F1, Dx} = fpe:sub(F0, X, X1),
-    {F2, DyDx} = fpe:mul(F1, Dx, Height),
-    {F3, DyDxPlus} = fpe:add(F2, DyDx, Bias),
-    {F4, Dy} = fpe:divide(F3, DyDxPlus, Width),
-    {_F5, _Y} = fpe:add(F4, Y1, Dy).
+    {F2, Dy} = fpe:expr(F1, {divide, {add, {mul, Dx, Height}, Bias}, Width}),
+    {_F3, _Y} = fpe:add(F2, Y1, Dy).
 
 movable_interval() ->
     I = fpe:start_instance("main.exe"),
@@ -24,10 +22,11 @@ movable_interval(I) ->
     {F6, Width} = fpe:sub(F5, RightX, LeftX),
     {F7, Height} = fpe:sub(F6, RightY, LeftY),
     {F8, SemiWidth} = fpe:divide(F7, Width, 2),
-    {F9, NegSemiWidth} = fpe:neg(F8, SemiWidth),
-    {F10, HeightPositive} = fpe:greater(F9, Height, 0),
-    {F11, Bias} = fpe:select(F10, SemiWidth, NegSemiWidth, HeightPositive),
-    Construction = F11,
+    {F9, Bias} = fpe:expr(F8, {select,
+                               SemiWidth,
+                               {neg, SemiWidth},
+                               {greater, Height, 0}}),
+    Construction = F9,
 
     {IntervalFunction, IntervalOutput} = interval(),
 

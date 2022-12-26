@@ -1,6 +1,6 @@
 -module(fpe).
 
--export([create_function/1, append_instruction/2, return_args/2]).
+-export([create_function/1, append_instruction/2, expr/2, return_args/2]).
 -export([function_to_binary/1, append_function_to_binary/2]).
 
 -export([add/3, sub/3, neg/2, shift_left/3, shift_right/3, mul/3,
@@ -27,6 +27,9 @@
 
 -type instruction() :: {unary_op(), arg()} | {binary_op(), arg(), arg()}
     | {ternary_op(), arg(), arg(), arg()}.
+-type expression() :: arg() | {unary_op(), expression()}
+    | {binary_op(), expression(), expression()}
+    | {ternary_op(), expression(), expression(), expression()}.
 
 -spec opcode(operation()) -> byte().
 
@@ -122,6 +125,23 @@ append_instruction(F, Instr) ->
         1 -> {NewF, {variable, Count}};
         2 -> {NewF, {variable, Count}, {variable, Count + 1}}
     end.
+
+expr(F, X) when is_integer(X) ->
+    {F, X};
+expr(F, X = {variable, _}) ->
+    {F, X};
+expr(F1, {Op, AExpr}) ->
+    {F2, A} = expr(F1, AExpr),
+    append_instruction(F2, {Op, A});
+expr(F1, {Op, AExpr, BExpr}) ->
+    {F2, A} = expr(F1, AExpr),
+    {F3, B} = expr(F2, BExpr),
+    append_instruction(F3, {Op, A, B});
+expr(F1, {Op, AExpr, BExpr, CExpr}) ->
+    {F2, A} = expr(F1, AExpr),
+    {F3, B} = expr(F2, BExpr),
+    {F4, C} = expr(F3, CExpr),
+    append_instruction(F4, {Op, A, B, C}).
 
 % Move some values and variables to the end of the stack, so that they are
 % visible as function results, for the state update function, and curve
