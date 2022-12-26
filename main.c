@@ -89,17 +89,20 @@ struct plotter_state make_demo_plotter(void) {
 
 void make_test_deserialize_input(void) {
     byte data[] = {
-        DE_COMMAND_NEW_CONSTRUCT, 2, 50, 20, 5,
+        DE_COMMAND_NEW_CONSTRUCT, 2, 50, 20, 8,
             OP_SUB, 0, 1,
             OP_ADD, 0, 1,
+            OP_GREATER | OP_IMM2, 0, 0,
             OP_NEG, 0,
+            OP_SELECT, 0, 5, 4,
+            OP_NEG, 6,
             OP_MOV, 0,
             OP_MOV, 1,
         DE_COMMAND_ADD_HORIZONTAL_AXIS, 0, 0,
         DE_COMMAND_ADD_VERTICAL_AXIS, 0, 0,
         DE_COMMAND_ADD_STATIC_POINT, 1, 2, 1, 3,
         DE_COMMAND_ADD_FREE_POINT, 1, 0, 1, 1,
-        DE_COMMAND_ADD_HORIZONTAL_CURVE, 2, 1, 4, 1, 0, 2,
+        DE_COMMAND_ADD_HORIZONTAL_CURVE, 2, 1, 7, 1, 6, 2,
             OP_MUL, 0, 0,
             OP_DIV | OP_IMM2, 3, 128, 1
     };

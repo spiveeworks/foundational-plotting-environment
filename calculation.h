@@ -133,7 +133,8 @@ int64 *calculate_function(struct function *f) {
         if (arg_count == 3) {
             arg1 = instr->args[0];
             arg2 = instr->args[1];
-            arg3 = instr->args[2];
+            /* arg3 can't be immediate, so do the lookup by default. */
+            arg3 = values[instr->args[2]];
         }
         if (arg_count >= 1 & !imm1) arg1 = values[arg1];
         if (arg_count >= 2 & !imm2) arg2 = values[arg2];
