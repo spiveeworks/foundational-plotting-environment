@@ -5,40 +5,45 @@
 -export([circle_demo/0, circle_demo/1]).
 
 interval() ->
-    {F0, [X, X1, _X2, Y1, Width, Height, Bias]} = fpe:create_function(7),
-    {F1, Dx} = fpe:sub(F0, X, X1),
-    % Basically x * (y2 - y1)/(x2 - x1), but we do a bit more work to make the
-    % integer approximation round at the right places.
-    {F2, Dy} = fpe:expr(F1, {divide, {add, {mul, Dx, Height}, Bias}, Width}),
-    {_F3, _Y} = fpe:add(F2, Y1, Dy).
+    Def = {function,
+     [x, x1, x2, y1, width, height, bias],
+     [{dx, {sub, x, x1}},
+      % Basically x * (y2 - y1)/(x2 - x1), but we do a bit more work to make
+      % the integer approximation round at the right places.
+      {dy, {divide, {add, {mul, dx, height}, bias}, width}},
+      {y, {add, y1, dy}}],
+     y},
+    fpe_func:flatten_function(Def).
 
 movable_interval() ->
     I = fpe:start_instance("fpe"),
     movable_interval(I).
 
 movable_interval(OldI) ->
-    {F0, [X1, Y1, X2, Y2]} = fpe:create_function(4),
-    {F1, Cmp} = fpe:less(F0, X1, X2),
-    {F2, LeftX} = fpe:select(F1, X1, X2, Cmp),
-    {F3, RightX} = fpe:select(F2, X2, X1, Cmp),
-    {F4, LeftY} = fpe:select(F3, Y1, Y2, Cmp),
-    {F5, RightY} = fpe:select(F4, Y2, Y1, Cmp),
-    {F6, Width} = fpe:sub(F5, RightX, LeftX),
-    {F7, Height} = fpe:sub(F6, RightY, LeftY),
-    {F8, SemiWidth} = fpe:divide(F7, Width, 2),
-    {F9, Bias} = fpe:expr(F8, {select,
-                               SemiWidth,
-                               {neg, SemiWidth},
-                               {greater, Height, 0}}),
-    Construction = F9,
+    Def = {multi_function,
+     [x1, y1, x2, y2],
+     [{cmp, {less, x1, x2}},
+      {leftx, {select, x1, x2, cmp}},
+      {rightx, {select, x2, x1, cmp}},
+      {lefty, {select, y1, y2, cmp}},
+      {righty, {select, y2, y1, cmp}},
+      {width, {sub, rightx, leftx}},
+      {height, {sub, righty, lefty}},
+      {semi_width, {divide, width, 2}},
+      {bias, {select, semi_width, {neg, semi_width}, {greater, height, 0}}}],
+     [leftx, rightx, lefty, width, height, bias, x1, x2, y1, y2]},
 
-    {IntervalFunction, IntervalOutput} = interval(),
+    {Construction, Args} = fpe_func:flatten_function(Def),
+
+    [LeftX, RightX, LeftY, Width, Height, Bias, X1, X2, Y1, Y2] = Args,
+
+    {IntervalCalculation, [IntervalOutput]} = interval(),
 
     {ok, I} = fpe:reset_construction(OldI, [-100, 0, 100, 0], Construction,
                                         [X1, Y1, X2, Y2]),
     fpe:add_horizontal_curve(I, {LeftX, RightX},
                              [LeftY, Width, Height, Bias],
-                             IntervalFunction, IntervalOutput),
+                             IntervalCalculation, IntervalOutput),
     fpe:add_free_point(I, X1, Y1),
     fpe:add_free_point(I, X2, Y2).
 
@@ -76,19 +81,19 @@ square_root_demo() ->
     square_root_demo(I).
 
 square_root_demo(OldI) ->
-    {Construction, []} = fpe:create_function(0),
+    {Construction, []} = fpe:create_calculation(0),
     {ok, I} = fpe:reset_construction(OldI, [], Construction, []),
 
     fpe:add_horizontal_line(I, 0),
     fpe:add_vertical_line(I, 0),
 
-    {SqrtBase, [XRaw, _LeftBound, _RightBound]} = fpe:create_function(3),
+    {SqrtBase, [XRaw, _LeftBound, _RightBound]} = fpe:create_calculation(3),
     {Rescaled, X} = fpe:mul(SqrtBase, XRaw, 100),
     {Sqrt, SqrtOut} = integer_square_root(Rescaled, X),
     fpe:add_horizontal_curve(I, {0, 1000}, [], Sqrt, SqrtOut).
 
 semicircle() ->
-    {F0, [X, _LeftBound, _RightBound, Quadrance]} = fpe:create_function(4),
+    {F0, [X, _LeftBound, _RightBound, Quadrance]} = fpe:create_calculation(4),
     {F1, YSquared} = fpe:expr(F0, {sub, Quadrance, {mul, X, X}}),
     {F2, YRaw} = integer_square_root(F1, YSquared),
     {_F3, _Y} = fpe:expr(F2, {select, YRaw, 16#8000000000000000,
@@ -99,7 +104,7 @@ circle_demo() ->
     circle_demo(I).
 
 circle_demo(OldI) ->
-    {F0, [X1, Y1]} = fpe:create_function(2),
+    {F0, [X1, Y1]} = fpe:create_calculation(2),
     {Construction, Quadrance} = fpe:expr(F0, {add, {mul, X1, X1}, {mul, Y1, Y1}}),
     {ok, I} = fpe:reset_construction(OldI, [100, 100], Construction, [X1, Y1]),
 

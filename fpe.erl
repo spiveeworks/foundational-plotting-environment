@@ -1,7 +1,9 @@
 -module(fpe).
 
--export([create_function/1, append_instruction/2, expr/2, return_args/2]).
--export([function_to_binary/1, append_function_to_binary/2]).
+-export([create_calculation/1, append_instruction/2, return_args/2]).
+-export([calculation_to_binary/1, append_calculation_to_binary/2]).
+% In the process of deprecating this with fpe_func:flatten_function
+-export([expr/2]).
 
 -export([add/3, sub/3, neg/2, shift_left/3, shift_right/3, mul/3,
          divide_modulo/3, divide/3, modulo/3, euclidean_divide_modulo/3,
@@ -13,6 +15,9 @@
          reset_construction/4]).
 -export([add_free_point/3, add_static_point/3, add_horizontal_line/2,
          add_vertical_line/2, add_horizontal_curve/5]).
+
+-export_type([calculation/0, arg/0]).
+-export_type([unary_op/0, binary_op/0, ternary_op/0, operation/0]).
 
 -type arg() :: {variable, non_neg_integer()} | integer().
 
@@ -27,9 +32,6 @@
 
 -type instruction() :: {unary_op(), arg()} | {binary_op(), arg(), arg()}
     | {ternary_op(), arg(), arg(), arg()}.
--type expression() :: arg() | {unary_op(), expression()}
-    | {binary_op(), expression(), expression()}
-    | {ternary_op(), expression(), expression(), expression()}.
 
 -spec opcode(operation()) -> byte().
 
@@ -102,24 +104,26 @@ instruction_to_binary({Op, A, B, {variable, CVal}}) ->
     CBin = integer_to_binary_7bit(CVal),
     <<Opcode, ABin/binary, BBin/binary, CBin/binary>>.
 
--record(function, {arg_count :: non_neg_integer(),
+-record(calculation, {arg_count :: non_neg_integer(),
                    val_count = 0 :: non_neg_integer(),
                    instructions = [] :: [instruction()]}).
 
-create_function(ArgCount) ->
-    F = #function{arg_count = ArgCount},
+-type calculation() :: #calculation{}.
+
+create_calculation(ArgCount) ->
+    F = #calculation{arg_count = ArgCount},
     ArgRefs = [{variable, X} || X <- lists:seq(0, ArgCount - 1)],
     {F, ArgRefs}.
 
 append_instruction(F, Instr) ->
-    Intermediates = F#function.val_count,
-    Count = F#function.arg_count + Intermediates,
+    Intermediates = F#calculation.val_count,
+    Count = F#calculation.arg_count + Intermediates,
     OutputCount = case Instr of
         {divide_modulo, _, _} -> 2;
         {euclidean_divide_modulo, _, _} -> 2;
         _ -> 1
     end,
-    NewF = F#function{instructions = [Instr | F#function.instructions],
+    NewF = F#calculation{instructions = [Instr | F#calculation.instructions],
                       val_count = Intermediates + OutputCount},
     case OutputCount of
         1 -> {NewF, {variable, Count}};
@@ -144,7 +148,7 @@ expr(F1, {Op, AExpr, BExpr, CExpr}) ->
     append_instruction(F4, {Op, A, B, C}).
 
 % Move some values and variables to the end of the stack, so that they are
-% visible as function results, for the state update function, and curve
+% visible as calculation results, for the state update calculation, and curve
 % definitions.
 return_args(F, []) ->
     F;
@@ -153,7 +157,7 @@ return_args(F, [Arg | Args]) ->
     return_args(NextF, Args).
 
 
-% Convenience functions, to write Erlang code that looks similar to the FPE
+% Convenience calculations, to write Erlang code that looks similar to the FPE
 % code it represents.
 add(F, A, B) ->              append_instruction(F, {add, A, B}).
 sub(F, A, B) ->              append_instruction(F, {sub, A, B}).
@@ -185,10 +189,10 @@ append_instruction_list_to_binary(Acc, [Instr | Rest]) ->
     Next = instruction_to_binary(Instr),
     append_instruction_list_to_binary(<<Acc/binary, Next/binary>>, Rest).
 
-function_to_binary(F) ->
-    append_function_to_binary(<<>>, F).
+calculation_to_binary(F) ->
+    append_calculation_to_binary(<<>>, F).
 
-append_function_to_binary(Acc, #function{instructions = Instrs}) ->
+append_calculation_to_binary(Acc, #calculation{instructions = Instrs}) ->
     Length = integer_to_binary_7bit(length(Instrs)),
     append_instruction_list_to_binary(<<Acc/binary, Length/binary>>,
                                       lists:reverse(Instrs)).
@@ -201,15 +205,15 @@ start_instance(Path) ->
     Port = open_port({spawn_executable, Path}, [stream, overlapped_io]),
     #instance{port = Port, state_var_count = 0, total_var_count = 0}.
 
-reset_construction_command(InitialState, Function, NewState) ->
-    StateSize = Function#function.arg_count,
-    TotalVarCount = StateSize + Function#function.val_count,
+reset_construction_command(InitialState, Calculation, NewState) ->
+    StateSize = Calculation#calculation.arg_count,
+    TotalVarCount = StateSize + Calculation#calculation.val_count,
 
     State = lists:map(fun integer_to_binary_7bit/1,
                       [StateSize | InitialState]),
 
-    FunctionWithRet = return_args(Function, NewState),
-    Construction = append_function_to_binary(<<>>, FunctionWithRet),
+    CalculationWithRet = return_args(Calculation, NewState),
+    Construction = append_calculation_to_binary(<<>>, CalculationWithRet),
 
     Command = list_to_binary([1, State, Construction]),
 
@@ -220,8 +224,8 @@ reset_construction_command(InitialState, Function, NewState) ->
        true ->
            {ok, Command, StateSize, TotalVarCount}
     end.
-reset_construction(Instance, InitialState, Function, NewState) ->
-    case reset_construction_command(InitialState, Function, NewState) of
+reset_construction(Instance, InitialState, Calculation, NewState) ->
+    case reset_construction_command(InitialState, Calculation, NewState) of
         {ok, Command, StateSize, TotalVarCount} ->
             port_command(Instance#instance.port, Command),
             {ok, Instance#instance{state_var_count = StateSize,
@@ -252,12 +256,13 @@ add_vertical_line(Instance, X) ->
     XBinary = arg_to_binary(X),
     port_command(Instance#instance.port, [5, XBinary]).
 
-add_horizontal_curve(Instance, {LeftBound, RightBound}, ExtraParameters, Function, Output) ->
+add_horizontal_curve(Instance, {LeftBound, RightBound}, ExtraParameters,
+                     Function, Output) ->
     Parameters = [LeftBound | [RightBound | ExtraParameters]],
     ArgBinaries = lists:map(fun arg_to_binary/1, Parameters),
     LengthBinary = integer_to_binary_7bit(length(Parameters)),
     ParameterBinary = [LengthBinary | ArgBinaries],
     FunctionWithRet = return_args(Function, [Output]),
-    FunctionBinary = append_function_to_binary(<<>>, FunctionWithRet),
+    FunctionBinary = append_calculation_to_binary(<<>>, FunctionWithRet),
     port_command(Instance#instance.port, [6, ParameterBinary, FunctionBinary]).
 
