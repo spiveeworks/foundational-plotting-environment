@@ -25,17 +25,13 @@ void draw_frame(long frame, struct window *win) {
 
 int entry_point(int argc, char **argv) {
     struct window win;
-    create_window(&win, "Settlement WinPort", false);
-    fputs("Window created.\n", stdout);
-    fflush(stdout);
+    create_window(&win, "Plotting Sandbox", false);
 
     long frame = 0;
     while (true) {
         struct window_event event;
         if (get_event(&win, &event, false)) {
             if (event.type == WINDOW_CLOSE) {
-                fputs("Window closed.\n", stdout);
-                fflush(stdout);
                 exit(EXIT_SUCCESS);
             }
             continue;
