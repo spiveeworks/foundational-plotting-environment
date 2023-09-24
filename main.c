@@ -8,15 +8,17 @@ void draw_frame(long frame, struct window *win) {
     ImageView out = win->back_buf;
     char *row = out.data;
     for (int j = 0; j < out.height; j++) {
-        unsigned *pel = (unsigned*)row;
-        unsigned *end = pel + out.width;
+        RGBA *pel = (RGBA*)row;
         for (int i = 0; i < out.width; i++) {
             unsigned t = (frame + i + j) % 511;
             if (t >= 256) t = 511 - t;
-            *pel = (t << 16) | (t << 8) | (255 - t);
+
+            pel->r = t;
+            pel->g = t;
+            pel->b = 255 - t;
+
             pel++;
         }
-        while (pel < end) *pel++ = 0x888888;
         row += out.stride;
     }
 
